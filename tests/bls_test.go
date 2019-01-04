@@ -20,8 +20,11 @@ func hash(data []byte) []byte {
 }
 
 func testAgg(t *testing.T) {
-	const n = 10
+
+	const n = 100
 	const hSize = 32 // sha256 creates 32 bytes hashes
+
+	t.Log("testing aggregation...");
 
 	secs := make([]*bls.SecretKey, n)
 	pubs := make([]bls.PublicKey, n)
@@ -405,6 +408,7 @@ func test(t *testing.T, c int) {
 	unitN = bls.GetOpUnitSize()
 	t.Logf("unitN=%d\n", unitN)
 	testAgg(t)
+	/*
 	testPre(t)
 	testRecoverSecretKey(t)
 	testAdd(t)
@@ -414,7 +418,7 @@ func test(t *testing.T, c int) {
 	testStringConversion(t)
 	testOrder(t, c)
 	testDHKeyExchange(t)
-	testSerializeToHexStr(t)
+	testSerializeToHexStr(t)*/
 }
 
 func TestFain(t *testing.T) {

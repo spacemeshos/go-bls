@@ -1,9 +1,14 @@
 package main
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
 	"github.com/spacemeshos/go-bls"
 	"log"
+	"time"
 )
+
+// Playground
 
 func signAndVerify() {
 	var sec1 bls.SecretKey
@@ -52,7 +57,62 @@ func simpleAggregate() {
 	log.Println("Aggregate Signature Verifies Correctly!")
 }
 
+func hash(data []byte) []byte {
+	h := sha256.New()
+	h.Write(data)
+	return h.Sum([]byte{})
+}
+
+
+func timeAggregation() {
+
+	const n = 200
+	const hSize = 32 // sha256 creates 32 bytes hashes
+
+	secs := make([]*bls.SecretKey, n)
+	pubs := make([]bls.PublicKey, n)
+	sigs := make([]*bls.Sign, n)
+	hashes := make([][]byte, n)
+
+	for i := 0; i < n; i++ {
+		d := make([]byte, 256)
+		_, err := rand.Read(d)
+		if err != nil {
+			panic("no entropy")
+		}
+
+		hashes[i] = hash(d)
+		sec := bls.SecretKey{}
+		sec.SetByCSPRNG()
+		secs[i] = &sec
+		pubs[i] = *sec.GetPublicKey()
+		sigs[i] = sec.SignHash(hashes[i])
+	}
+
+	sig := sigs[0]
+	for i := 1; i < n; i++ {
+		sig.Add(sigs[i])
+	}
+
+	t := time.Now()
+
+	if !sig.VerifyAggregatedHashes(pubs, hashes, hSize, n) {
+		log.Fatal ("Verification failed")
+	}
+
+	e := time.Since(t)
+	log.Printf("%d aggregated sigs verified in %s \n", n, e)
+
+	hashes[0] = hash([]byte("a random message"))
+	if sig.VerifyAggregatedHashes(pubs, hashes, hSize, n) {
+		log.Fatal ("Expected verification to fail on tweaked adata")
+	}
+
+	log.Println("Aggregate Signature Verifies Correctly!")
+}
+
 func main() {
+	timeAggregation()
 	signAndVerify()
 	simpleAggregate()
 
