@@ -23,14 +23,15 @@ func signAndVerify() {
 
 	// 96 bytes (eth is 64 bytes)
 	pub1 := sec1.GetPublicKey()
-	log.Printf("Pub key (96 bytes): 0x%x", pub1.Serialize())
-	log.Printf("Pub key (96 bytes): 0x%s", pub1.SerializeToHexStr())
+
+	log.Printf("Pub key (96 bytes): Serialize() 0x%x", pub1.Serialize())
+	log.Printf("Pub key (96 bytes): SerializeToHexStr() 0x%s", pub1.SerializeToHexStr())
 
 	m := []byte("super special message")
 	sign1 := sec1.Sign(m)
 
 	// 48 bytes (eth is 64-65 bytes long)
-	log.Printf("Sig 1: (48 bytes) 0x%x", sign1.Serialize())
+	log.Printf("Sig 1: (48 bytes) Serialize() 0x%x", sign1.Serialize())
 
 	if !sign1.Verify(pub1, m) {
 		log.Fatal("Aggregate Signature Does Not Verify")
@@ -63,6 +64,7 @@ func simpleAggregate() {
 	log.Println("Aggregate Signature Verifies Correctly!")
 }
 
+// hash helper
 func hash(data []byte) []byte {
 	h := sha256.New()
 	h.Write(data)
@@ -72,7 +74,7 @@ func hash(data []byte) []byte {
 func timeAggregation() {
 
 	// this fails for larger values of n such as 500 or 1000
-	const n = 255
+	const n = 50
 	const hSize = 32 // sha256 creates 32 bytes hashes
 
 	secs := make([]*bls.SecretKey, n)
@@ -118,8 +120,8 @@ func timeAggregation() {
 }
 
 func main() {
-	// timeAggregation()
+	timeAggregation()
 	signAndVerify()
-	// simpleAggregate()
+	simpleAggregate()
 
 }

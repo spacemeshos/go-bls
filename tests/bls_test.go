@@ -408,7 +408,7 @@ func test(t *testing.T, c int) {
 	unitN = bls.GetOpUnitSize()
 	t.Logf("unitN=%d\n", unitN)
 	testAgg(t)
-	/*
+
 	testPre(t)
 	testRecoverSecretKey(t)
 	testAdd(t)
@@ -418,7 +418,7 @@ func test(t *testing.T, c int) {
 	testStringConversion(t)
 	testOrder(t, c)
 	testDHKeyExchange(t)
-	testSerializeToHexStr(t)*/
+	testSerializeToHexStr(t)
 }
 
 func TestFain(t *testing.T) {
