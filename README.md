@@ -15,9 +15,11 @@ cd external
 git clone https://github.com/herumi/mcl.git
 git clone https://github.com/herumi/bls.git
 cd mcl
+make test
 make test-go
 cd ..
 cd bls
+make test
 make test-go
 cd ..
 go build

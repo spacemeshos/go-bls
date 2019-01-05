@@ -59,7 +59,7 @@ func (id *ID) SetLittleEndian(buf []byte) error {
 	return id.v.SetLittleEndian(buf)
 }
 
-// GetHexString --
+// GetHexString -- this is the canonical representation of id
 func (id *ID) GetHexString() string {
 	return id.v.GetString(16)
 }
@@ -69,7 +69,7 @@ func (id *ID) GetDecString() string {
 	return id.v.GetString(10)
 }
 
-// SetHexString --
+// SetHexString -- canonical way to build an ID
 func (id *ID) SetHexString(s string) error {
 	return id.v.SetString(s, 16)
 }
@@ -84,9 +84,28 @@ func (id *ID) IsEqual(rhs *ID) bool {
 	return id.v.IsEqual(&rhs.v)
 }
 
+// ---------------- Secret Key --------------------
+
 // SecretKey --
 type SecretKey struct {
 	v Fr
+}
+
+// New random secret key
+func NewSecretKey() SecretKey {
+	k := SecretKey{}
+	k.v.SetByCSPRNG()
+	return k
+}
+
+// GetHexString -- this is the canonical way to serialize a secret key
+func (sec *SecretKey) GetHexString() string {
+	return sec.v.GetString(16)
+}
+
+// SetHexString -- this is the canonical way to deserialize a secret key
+func (sec *SecretKey) SetHexString(s string) error {
+	return sec.v.SetString(s, 16)
 }
 
 // getPointer --
@@ -105,29 +124,19 @@ func (sec *SecretKey) SetLittleEndian(buf []byte) error {
 	return sec.v.SetLittleEndian(buf)
 }
 
-// SerializeToHexStr --
+// SerializeToHexStr -- to LittleEndian
 func (sec *SecretKey) SerializeToHexStr() string {
 	return sec.v.GetString(IoSerializeHexStr)
 }
 
-// DeserializeHexStr --
+// DeserializeHexStr -- from LittleEndian
 func (sec *SecretKey) DeserializeHexStr(s string) error {
 	return sec.v.SetString(s, IoSerializeHexStr)
-}
-
-// GetHexString --
-func (sec *SecretKey) GetHexString() string {
-	return sec.v.GetString(16)
 }
 
 // GetDecString --
 func (sec *SecretKey) GetDecString() string {
 	return sec.v.GetString(10)
-}
-
-// SetHexString --
-func (sec *SecretKey) SetHexString(s string) error {
-	return sec.v.SetString(s, 16)
 }
 
 // SetDecString --
@@ -200,22 +209,22 @@ func (pub *PublicKey) getPointer() (p *C.blsPublicKey) {
 	return (*C.blsPublicKey)(unsafe.Pointer(pub))
 }
 
-// Serialize --
+// Serialize -- get rat bytes
 func (pub *PublicKey) Serialize() []byte {
 	return pub.v.Serialize()
 }
 
-// Deserialize --
+// Deserialize -- from raw bytes
 func (pub *PublicKey) Deserialize(buf []byte) error {
 	return pub.v.Deserialize(buf)
 }
 
-// SerializeToHexStr --
+// SerializeToHexStr -- BigEndian hex of raw bytes
 func (pub *PublicKey) SerializeToHexStr() string {
 	return pub.v.GetString(IoSerializeHexStr)
 }
 
-// DeserializeHexStr --
+// DeserializeHexStr -- From bigEndian hex string
 func (pub *PublicKey) DeserializeHexStr(s string) error {
 	return pub.v.SetString(s, IoSerializeHexStr)
 }
@@ -366,7 +375,7 @@ func DHKeyExchange(sec *SecretKey, pub *PublicKey) (out PublicKey) {
 //     e(aggSig, Q) = prod_i e(hVec[i], pubVec[i])
 //
 // return 1 if valid
-// @note do not check duplication of hVec
+// @note does not check duplication of hVec
 //
 func (sign *Sign) VerifyAggregatedHashes(pubKeys []PublicKey, hashes [][]byte, hSize uint, n uint) bool {
 
@@ -375,14 +384,14 @@ func (sign *Sign) VerifyAggregatedHashes(pubKeys []PublicKey, hashes [][]byte, h
 	}
 
 	// hack to overcome gco limitations in unpacking slices...
-	hash:= hashes[0]
+	//hash:= hashes[0]
 
 	// BLS_DLL_API int blsVerifyAggregatedHashes(const blsSignature *aggSig, const blsPublicKey *pubVec, const void *hVec, size_t sizeofHash, mclSize n);
 
 	return C.blsVerifyAggregatedHashes(
 		sign.getPointer(),
 		pubKeys[0].getPointer(),
-		unsafe.Pointer(&hash[0]),
+		unsafe.Pointer(&hashes[0][0]),
 		C.size_t(hSize),
 		C.ulong(n)) == 1
 }

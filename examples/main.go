@@ -11,21 +11,27 @@ import (
 // Playground
 
 func signAndVerify() {
-	var sec1 bls.SecretKey
-	sec1.SetByCSPRNG()
 
-	// 33 bytes (eth is 32 bytes)
-	log.Printf("Private key: 0x%x", sec1.GetLittleEndian())
+	sec1 := bls.NewSecretKey()
+
+	// 32 bytes
+	log.Printf("Priv key (32 bytes) GetLittleEndian(): 0x%x", sec1.GetLittleEndian())
+	log.Printf("Priv key GetHexString() (bigEndian): 0x%s", sec1.GetHexString())
+	log.Printf("Priv key getDecString(): %s", sec1.GetDecString())
+	log.Printf("Priv key SerizlieToHexStr(): (littleEndian): 0x%s", sec1.SerializeToHexStr())
+
 
 	// 96 bytes (eth is 64 bytes)
 	pub1 := sec1.GetPublicKey()
-	log.Printf("Pulic key: 0x%x", pub1.Serialize())
+	log.Printf("Pub key (96 bytes): 0x%x", pub1.Serialize())
+	log.Printf("Pub key (96 bytes): 0x%s", pub1.SerializeToHexStr())
 
 	m := []byte("super special message")
 	sign1 := sec1.Sign(m)
 
 	// 48 bytes (eth is 64-65 bytes long)
-	log.Printf("Signature 1: 0x%x", sign1.Serialize())
+	log.Printf("Sig 1: (48 bytes) 0x%x", sign1.Serialize())
+
 	if !sign1.Verify(pub1, m) {
 		log.Fatal("Aggregate Signature Does Not Verify")
 	}
@@ -63,10 +69,10 @@ func hash(data []byte) []byte {
 	return h.Sum([]byte{})
 }
 
-
 func timeAggregation() {
 
-	const n = 200
+	// this fails for larger values of n such as 500 or 1000
+	const n = 255
 	const hSize = 32 // sha256 creates 32 bytes hashes
 
 	secs := make([]*bls.SecretKey, n)
@@ -105,15 +111,15 @@ func timeAggregation() {
 
 	hashes[0] = hash([]byte("a random message"))
 	if sig.VerifyAggregatedHashes(pubs, hashes, hSize, n) {
-		log.Fatal ("Expected verification to fail on tweaked adata")
+		log.Fatal ("Expected verification to fail on tweaked data")
 	}
 
 	log.Println("Aggregate Signature Verifies Correctly!")
 }
 
 func main() {
-	timeAggregation()
+	// timeAggregation()
 	signAndVerify()
-	simpleAggregate()
+	// simpleAggregate()
 
 }
