@@ -20,7 +20,6 @@ func signAndVerify() {
 	log.Printf("Priv key getDecString(): %s", sec1.GetDecString())
 	log.Printf("Priv key SerizlieToHexStr(): (littleEndian): 0x%s", sec1.SerializeToHexStr())
 
-
 	// 96 bytes (eth is 64 bytes)
 	pub1 := sec1.GetPublicKey()
 
@@ -73,28 +72,29 @@ func hash(data []byte) []byte {
 
 func timeAggregation() {
 
-	// this fails for larger values of n such as 500 or 1000
-	const n = 50
+	const n = 1000
 	const hSize = 32 // sha256 creates 32 bytes hashes
+
+	log.Println("testing aggregation...")
 
 	secs := make([]*bls.SecretKey, n)
 	pubs := make([]bls.PublicKey, n)
 	sigs := make([]*bls.Sign, n)
-	hashes := make([][]byte, n)
+	var hashes []byte
 
 	for i := 0; i < n; i++ {
 		d := make([]byte, 256)
 		_, err := rand.Read(d)
 		if err != nil {
-			panic("no entropy")
+			panic ("arggg...")
 		}
 
-		hashes[i] = hash(d)
-		sec := bls.SecretKey{}
-		sec.SetByCSPRNG()
+		h := hash(d)
+		hashes = append(hashes, h...)
+		sec := bls.NewSecretKey()
 		secs[i] = &sec
 		pubs[i] = *sec.GetPublicKey()
-		sigs[i] = sec.SignHash(hashes[i])
+		sigs[i] = sec.SignHash(h)
 	}
 
 	sig := sigs[0]
@@ -102,18 +102,18 @@ func timeAggregation() {
 		sig.Add(sigs[i])
 	}
 
-	t := time.Now()
-
-	if !sig.VerifyAggregatedHashes(pubs, hashes, hSize, n) {
-		log.Fatal ("Verification failed")
+	t1 := time.Now()
+	res := sig.VerifyAggregatedHashes(pubs, hashes, hSize, n)
+	if !res {
+		log.Fatal("Aggregate Signature Does Not Verify")
 	}
+	e := time.Since(t1)
+	log.Printf("Aggregate %d took %s \n", n, e)
 
-	e := time.Since(t)
-	log.Printf("%d aggregated sigs verified in %s \n", n, e)
-
-	hashes[0] = hash([]byte("a random message"))
+	// change some bytes in a hash and try to verify...
+	copy(hashes[0:3], []byte{0,1,2,4})
 	if sig.VerifyAggregatedHashes(pubs, hashes, hSize, n) {
-		log.Fatal ("Expected verification to fail on tweaked data")
+		log.Fatal("Expected verification to fail")
 	}
 
 	log.Println("Aggregate Signature Verifies Correctly!")
