@@ -377,11 +377,11 @@ func DHKeyExchange(sec *SecretKey, pub *PublicKey) (out PublicKey) {
 // return 1 if valid
 // @note does not check duplication of hVec
 //
-func (sign *Sign) VerifyAggregatedHashes(pubKeys []PublicKey, hashes [][]byte, hSize uint, n uint) bool {
+func (sign *Sign) VerifyAggregatedHashes(pubKeys []PublicKey, hashes []byte, hSize uint, n uint) bool {
 
-	if n == 0 || uint(len(pubKeys)) != n || uint(len(hashes)) != n || hSize == 0 {
-		return false
-	}
+	// if n == 0 || uint(len(pubKeys)) != n || uint(len(hashes)) != n || hSize == 0 {
+	//	return false
+	//}
 
 	// hack to overcome gco limitations in unpacking slices...
 	//hash:= hashes[0]
@@ -391,7 +391,7 @@ func (sign *Sign) VerifyAggregatedHashes(pubKeys []PublicKey, hashes [][]byte, h
 	return C.blsVerifyAggregatedHashes(
 		sign.getPointer(),
 		pubKeys[0].getPointer(),
-		unsafe.Pointer(&hashes[0][0]),
+		unsafe.Pointer(&hashes[0]),
 		C.size_t(hSize),
 		C.ulong(n)) == 1
 }

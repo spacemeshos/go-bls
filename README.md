@@ -4,7 +4,7 @@ This is an experimental eraly POC. Be warend, dragons ahead.
 
 ## Building
 
-This is all a temp big hack that should be automated. For now...
+This is all a temp big hack that should be fully automated. For now...
 
 
 ```
@@ -39,4 +39,4 @@ go run main.go
 ```
 
 ## TODO
-- [ ] investigate prng injection from go
+- 

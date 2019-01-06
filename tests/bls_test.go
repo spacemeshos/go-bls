@@ -3,10 +3,12 @@ package tests
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"fmt"
 	"github.com/spacemeshos/go-bls"
 	"github.com/stretchr/testify/assert"
 	"strconv"
 	"testing"
+	"time"
 )
 
 var unitN = 0
@@ -21,7 +23,7 @@ func hash(data []byte) []byte {
 
 func testAgg(t *testing.T) {
 
-	const n = 100
+	const n = 1000
 	const hSize = 32 // sha256 creates 32 bytes hashes
 
 	t.Log("testing aggregation...");
@@ -29,19 +31,22 @@ func testAgg(t *testing.T) {
 	secs := make([]*bls.SecretKey, n)
 	pubs := make([]bls.PublicKey, n)
 	sigs := make([]*bls.Sign, n)
-	hashes := make([][]byte, n)
+	hashes := []byte{}
 
 	for i := 0; i < n; i++ {
 		d := make([]byte, 256)
 		_, err := rand.Read(d)
 		assert.NoError(t, err)
-		hashes[i] = hash(d)
+
+		h := hash(d)
+
+		hashes = append(hashes, h...)
 
 		var sec bls.SecretKey
 		sec.SetByCSPRNG()
 		secs[i] = &sec
 		pubs[i] = *sec.GetPublicKey()
-		sigs[i] = sec.SignHash(hashes[i])
+		sigs[i] = sec.SignHash(h)
 	}
 
 	sig := sigs[0]
@@ -49,9 +54,12 @@ func testAgg(t *testing.T) {
 		sig.Add(sigs[i])
 	}
 
+	t1 := time.Now()
 	assert.True(t, sig.VerifyAggregatedHashes(pubs, hashes, hSize, n))
+	e := time.Since(t1)
+	fmt.Printf("Aggregate %d took %s \n", n, e)
 
-	hashes[0] = hash([]byte("a random message"))
+	copy(hashes[0:3], []byte{0,1,3,4})
 	assert.False(t, sig.VerifyAggregatedHashes(pubs, hashes, hSize, n))
 }
 
@@ -409,6 +417,7 @@ func test(t *testing.T, c int) {
 	t.Logf("unitN=%d\n", unitN)
 	testAgg(t)
 
+	/*
 	testPre(t)
 	testRecoverSecretKey(t)
 	testAdd(t)
@@ -419,6 +428,7 @@ func test(t *testing.T, c int) {
 	testOrder(t, c)
 	testDHKeyExchange(t)
 	testSerializeToHexStr(t)
+	*/
 }
 
 func TestFain(t *testing.T) {
