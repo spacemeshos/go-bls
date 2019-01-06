@@ -26,24 +26,20 @@ func testAgg(t *testing.T) {
 	const n = 1000
 	const hSize = 32 // sha256 creates 32 bytes hashes
 
-	t.Log("testing aggregation...");
+	t.Log("testing aggregation...")
 
 	secs := make([]*bls.SecretKey, n)
 	pubs := make([]bls.PublicKey, n)
 	sigs := make([]*bls.Sign, n)
-	hashes := []byte{}
+	var hashes []byte
 
 	for i := 0; i < n; i++ {
 		d := make([]byte, 256)
 		_, err := rand.Read(d)
 		assert.NoError(t, err)
-
 		h := hash(d)
-
 		hashes = append(hashes, h...)
-
-		var sec bls.SecretKey
-		sec.SetByCSPRNG()
+		sec := bls.NewSecretKey()
 		secs[i] = &sec
 		pubs[i] = *sec.GetPublicKey()
 		sigs[i] = sec.SignHash(h)
@@ -55,11 +51,13 @@ func testAgg(t *testing.T) {
 	}
 
 	t1 := time.Now()
-	assert.True(t, sig.VerifyAggregatedHashes(pubs, hashes, hSize, n))
+	res := sig.VerifyAggregatedHashes(pubs, hashes, hSize, n)
 	e := time.Since(t1)
 	fmt.Printf("Aggregate %d took %s \n", n, e)
+	assert.True(t, res)
 
-	copy(hashes[0:3], []byte{0,1,3,4})
+	// change some bytes in a hash and try to verify...
+	copy(hashes[0:3], []byte{0,1,2,4})
 	assert.False(t, sig.VerifyAggregatedHashes(pubs, hashes, hSize, n))
 }
 
