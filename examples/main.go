@@ -73,7 +73,7 @@ func hash(data []byte) []byte {
 func timeAggregation() {
 
 	const n = 1000
-	const hSize = 32 // sha256 creates 32 bytes hashes
+	const hSize = 32 // sha256 creates a 32 bytes hash
 
 	log.Println("testing aggregation...")
 
@@ -86,7 +86,7 @@ func timeAggregation() {
 		d := make([]byte, 256)
 		_, err := rand.Read(d)
 		if err != nil {
-			panic ("arggg...")
+			panic ("no entropy")
 		}
 
 		h := hash(d)
@@ -119,9 +119,47 @@ func timeAggregation() {
 	log.Println("Aggregate Signature Verifies Correctly!")
 }
 
-func main() {
-	timeAggregation()
-	signAndVerify()
-	simpleAggregate()
+func timeNaiveAggregation() {
 
+	const n = 1000
+	const hSize = 32 // sha256 creates a 32 bytes hash
+
+	log.Println("testing aggregation...")
+
+	secs := make([]*bls.SecretKey, n)
+	pubs := make([]*bls.PublicKey, n)
+	sigs := make([]*bls.Sign, n)
+	hashes1 := make([][]byte, n)
+
+	for i := 0; i < n; i++ {
+		d := make([]byte, 256)
+		_, err := rand.Read(d)
+		if err != nil {
+			panic ("no entropy")
+		}
+
+		h := hash(d)
+		hashes1[i] = h
+		sec := bls.NewSecretKey()
+		secs[i] = &sec
+		pubs[i] = sec.GetPublicKey()
+		sigs[i] = sec.Sign(h)
+	}
+
+	t1 := time.Now()
+
+	for i := 0; i < n; i++ {
+		if !sigs[i].Verify(pubs[i], hashes1[i]) {
+			panic("Failed to verify")
+		}
+	}
+	e := time.Since(t1)
+	log.Printf("Naive aggregate verify %d took %s \n", n, e)
+}
+
+func main() {
+	timeNaiveAggregation()
+	// timeAggregation()
+	// signAndVerify()
+	// simpleAggregate()
 }

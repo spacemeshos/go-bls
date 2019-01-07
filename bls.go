@@ -379,14 +379,9 @@ func DHKeyExchange(sec *SecretKey, pub *PublicKey) (out PublicKey) {
 //
 func (sign *Sign) VerifyAggregatedHashes(pubKeys []PublicKey, hashes []byte, hSize uint, n uint) bool {
 
-	// if n == 0 || uint(len(pubKeys)) != n || uint(len(hashes)) != n || hSize == 0 {
-	//	return false
-	//}
-
-	// hack to overcome gco limitations in unpacking slices...
-	//hash:= hashes[0]
-
-	// BLS_DLL_API int blsVerifyAggregatedHashes(const blsSignature *aggSig, const blsPublicKey *pubVec, const void *hVec, size_t sizeofHash, mclSize n);
+	if n == 0 || uint(len(pubKeys)) != n || uint(len(hashes)) != n * hSize || hSize == 0 {
+		return false
+	}
 
 	return C.blsVerifyAggregatedHashes(
 		sign.getPointer(),
