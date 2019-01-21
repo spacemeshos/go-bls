@@ -1,11 +1,10 @@
 # Spacemesh go-bls lib POC
 
-This is an experimental eraly POC. Be warend, dragons ahead.
+This is an experimental early POC. Be warned, dragons ahead...
 
 ## Building
 
-This is all a temp big hack that should be fully automated. For now...
-
+Native requirements: gcc, libgmp-dev libssl-dev
 
 ```
 git clone https://github.com/spacemeshos/go-bls
@@ -36,5 +35,3 @@ go run main.go
 
 ```
 
-## TODO
-- 
