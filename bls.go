@@ -333,7 +333,7 @@ func (sec *SecretKey) Sign(message []byte) (sign *Sign) {
 func (sec *SecretKey) SignHash(hash []byte) (sign *Sign) {
 	sign = new(Sign)
 	// #nosec
-	if C.blsSignHash(sign.getPointer(), sec.getPointer(), unsafe.Pointer(&hash[0]), C.size_t(len(hash))) !=0 {
+	if C.blsSignHash(sign.getPointer(), sec.getPointer(), unsafe.Pointer(&hash[0]), C.size_t(len(hash))) != 0 {
 		// todo: handle error
 	}
 	return sign
@@ -379,7 +379,7 @@ func DHKeyExchange(sec *SecretKey, pub *PublicKey) (out PublicKey) {
 //
 func (sign *Sign) VerifyAggregatedHashes(pubKeys []PublicKey, hashes []byte, hSize uint, n uint) bool {
 
-	if n == 0 || uint(len(pubKeys)) != n || uint(len(hashes)) != n * hSize || hSize == 0 {
+	if n == 0 || uint(len(pubKeys)) != n || uint(len(hashes)) != n*hSize || hSize == 0 {
 		return false
 	}
 

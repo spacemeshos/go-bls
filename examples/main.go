@@ -10,6 +10,14 @@ import (
 
 // Playground
 
+func main() {
+	timeNaiveAggregation()
+	timeAggregation()
+	signAndVerify()
+	simpleAggregate()
+}
+
+// Basic BLS signature usage
 func signAndVerify() {
 
 	sec1 := bls.NewSecretKey()
@@ -38,7 +46,7 @@ func signAndVerify() {
 	log.Println("Aggregate Signature Verifies Correctly!")
 }
 
-// multiple signers - same message
+// Demonstrates how to use multiple signers on the same message
 func simpleAggregate() {
 	var sec1 bls.SecretKey
 	var sec2 bls.SecretKey
@@ -70,6 +78,9 @@ func hash(data []byte) []byte {
 	return h.Sum([]byte{})
 }
 
+// Benchmarks aggregated signature
+// An aggregated signature is created by n signers over n unique messages.
+// To verify, the verifier needs access to 1 aggregated signature, all public keys and all message hashes.
 func timeAggregation() {
 
 	const n = 1000
@@ -86,7 +97,7 @@ func timeAggregation() {
 		d := make([]byte, 256)
 		_, err := rand.Read(d)
 		if err != nil {
-			panic ("no entropy")
+			panic("no entropy")
 		}
 
 		h := hash(d)
@@ -111,7 +122,7 @@ func timeAggregation() {
 	log.Printf("Aggregate %d took %s \n", n, e)
 
 	// change some bytes in a hash and try to verify...
-	copy(hashes[0:3], []byte{0,1,2,4})
+	copy(hashes[0:3], []byte{0, 1, 2, 4})
 	if sig.VerifyAggregatedHashes(pubs, hashes, hSize, n) {
 		log.Fatal("Expected verification to fail")
 	}
@@ -119,6 +130,8 @@ func timeAggregation() {
 	log.Println("Aggregate Signature Verifies Correctly!")
 }
 
+// Benchmark naive aggregation  in which n messages are signed by n signers to produce n signatures.
+// Verifier has access to n public keys, n messages and n signatures.
 func timeNaiveAggregation() {
 
 	const n = 1000
@@ -135,7 +148,7 @@ func timeNaiveAggregation() {
 		d := make([]byte, 256)
 		_, err := rand.Read(d)
 		if err != nil {
-			panic ("no entropy")
+			panic("no entropy")
 		}
 
 		h := hash(d)
@@ -155,11 +168,4 @@ func timeNaiveAggregation() {
 	}
 	e := time.Since(t1)
 	log.Printf("Naive aggregate verify %d took %s \n", n, e)
-}
-
-func main() {
-	timeNaiveAggregation()
-	// timeAggregation()
-	// signAndVerify()
-	// simpleAggregate()
 }

@@ -57,7 +57,7 @@ func testAgg(t *testing.T) {
 	assert.True(t, res)
 
 	// change some bytes in a hash and try to verify...
-	copy(hashes[0:3], []byte{0,1,2,4})
+	copy(hashes[0:3], []byte{0, 1, 2, 4})
 	assert.False(t, sig.VerifyAggregatedHashes(pubs, hashes, hSize, n))
 }
 
@@ -416,16 +416,16 @@ func test(t *testing.T, c int) {
 	testAgg(t)
 
 	/*
-	testPre(t)
-	testRecoverSecretKey(t)
-	testAdd(t)
-	testSign(t)
-	testPop(t)
-	testData(t)
-	testStringConversion(t)
-	testOrder(t, c)
-	testDHKeyExchange(t)
-	testSerializeToHexStr(t)
+		testPre(t)
+		testRecoverSecretKey(t)
+		testAdd(t)
+		testSign(t)
+		testPop(t)
+		testData(t)
+		testStringConversion(t)
+		testOrder(t, c)
+		testDHKeyExchange(t)
+		testSerializeToHexStr(t)
 	*/
 }
 
@@ -434,10 +434,10 @@ func TestFain(t *testing.T) {
 	// t.Log("CurveFp254BNb")
 	// test(t, bls.CurveFp254BNb)
 	// if bls.GetMaxOpUnitSize() == 6 {
-		// t.Log("CurveFp382_1")
-		// test(t, bls.CurveFp382_1)
-		t.Log("BLS12_381")
-		test(t, bls.BLS12_381)
+	// t.Log("CurveFp382_1")
+	// test(t, bls.CurveFp382_1)
+	t.Log("BLS12_381")
+	test(t, bls.BLS12_381)
 	// }
 }
 

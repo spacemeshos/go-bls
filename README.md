@@ -13,11 +13,10 @@ git submodule init
 git submodule update
 cd external/mcl
 make test
-make test-go
-cd ..
-cd bls
+make test_go
+cd ../bls
 make test
-make test-go
+make test_go
 cd ..
 go build
 ```
@@ -27,7 +26,7 @@ go build
 go test ./tests/. -v
 ```
 
-## Examples
+## Running
 ```
 cd examples
 export DYLD_LIBRARY_PATH=[YR-GO-PATH]/src/github.com/spacemeshos/go-bls/external/bls/lib
