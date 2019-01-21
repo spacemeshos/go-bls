@@ -21,15 +21,15 @@ import (
 )
 import "unsafe"
 
+// Initialize the library automatically with the default curve BLS12_381
 func init() {
 	if err := InitializeBLS(BLS12_381); err != nil {
 		log.Fatalf("Could not initialize BLS12-381 curve: %v", err)
 	}
 }
 
-// initializeBLS --
-// call this function before calling all the other operations
-// this function is not thread safe
+// Library users MUST call this function to use a different curve than BLS12_381 before calling any the other library func
+// This function is not thread safe.
 func InitializeBLS(curve int) error {
 	err := C.blsInit(C.int(curve), C.MCLBN_COMPILED_TIME_VAR)
 	if err != 0 {
@@ -38,128 +38,133 @@ func InitializeBLS(curve int) error {
 	return nil
 }
 
-// ID --
+// ---------------- ID Functions --------------------
+
 type ID struct {
 	v Fr
 }
 
-// getPointer --
+// getPointer returns a bls id pointer
 func (id *ID) getPointer() (p *C.blsId) {
 	// #nosec
 	return (*C.blsId)(unsafe.Pointer(id))
 }
 
-// GetLittleEndian --
+// GetLittleEndian returns a little-endian encoded byte array
 func (id *ID) GetLittleEndian() []byte {
 	return id.v.Serialize()
 }
 
-// SetLittleEndian --
+// SetLittleEndian sets an id from a little-endian encoded byte array
 func (id *ID) SetLittleEndian(buf []byte) error {
 	return id.v.SetLittleEndian(buf)
 }
 
-// GetHexString -- this is the canonical representation of id
+// GetHexString returns a hex-formatted string encoding of the id
+// This is the canonical representation of an id
 func (id *ID) GetHexString() string {
 	return id.v.GetString(16)
 }
 
-// GetDecString --
+// GetDecString returns a decimal-formatted string encoding of id
 func (id *ID) GetDecString() string {
 	return id.v.GetString(10)
 }
 
-// SetHexString -- canonical way to build an ID
+// SetHexString. Sets id from a hex-formatted string
+// This is the canonical way to build an ID
 func (id *ID) SetHexString(s string) error {
 	return id.v.SetString(s, 16)
 }
 
-// SetDecString --
+// SetDecString sets the id from a dec-formatted string
 func (id *ID) SetDecString(s string) error {
 	return id.v.SetString(s, 10)
 }
 
-// IsEqual --
+// IsEqual returns true if and only if id equals rhs
 func (id *ID) IsEqual(rhs *ID) bool {
 	return id.v.IsEqual(&rhs.v)
 }
 
-// ---------------- Secret Key --------------------
+// ---------------- Secret Key Functions --------------------
 
-// SecretKey --
+// SecretKey
 type SecretKey struct {
 	v Fr
 }
 
-// New random secret key
+// NewSecretKey returns a new random secret key
 func NewSecretKey() SecretKey {
 	k := SecretKey{}
 	k.v.SetByCSPRNG()
 	return k
 }
 
-// GetHexString -- this is the canonical way to serialize a secret key
+// GetHexString returns a hex-formatted string of the secret key
+// This is the canonical way to serialize a secret key
 func (sec *SecretKey) GetHexString() string {
 	return sec.v.GetString(16)
 }
 
-// SetHexString -- this is the canonical way to deserialize a secret key
+// SetHexString sets the key's value from a hex-formatted string
+// This is the canonical way to deserialize a secret key
 func (sec *SecretKey) SetHexString(s string) error {
 	return sec.v.SetString(s, 16)
 }
 
-// getPointer --
+// getPointer returns a pointer to the secret key
 func (sec *SecretKey) getPointer() (p *C.blsSecretKey) {
 	// #nosec
 	return (*C.blsSecretKey)(unsafe.Pointer(sec))
 }
 
-// GetLittleEndian --
+// GetLittleEndian returns a little-endian encoded byte array of the secret key
 func (sec *SecretKey) GetLittleEndian() []byte {
 	return sec.v.Serialize()
 }
 
-// SetLittleEndian --
+// SetLittleEndian sets the secret key from a little-endian encoded byte array
 func (sec *SecretKey) SetLittleEndian(buf []byte) error {
 	return sec.v.SetLittleEndian(buf)
 }
 
-// SerializeToHexStr -- to LittleEndian
+// SerializeToHexStr serializes the key to a little-endian hex-formatted string
 func (sec *SecretKey) SerializeToHexStr() string {
 	return sec.v.GetString(IoSerializeHexStr)
 }
 
-// DeserializeHexStr -- from LittleEndian
+// DeserializeHexStr creates a key from a little-endian hex-formatted string
 func (sec *SecretKey) DeserializeHexStr(s string) error {
 	return sec.v.SetString(s, IoSerializeHexStr)
 }
 
-// GetDecString --
+// GetDecString returns a decimal-formatted string of the secret key
 func (sec *SecretKey) GetDecString() string {
 	return sec.v.GetString(10)
 }
 
-// SetDecString --
+// SetDecString sets the secret key from a decimal-formatted string
 func (sec *SecretKey) SetDecString(s string) error {
 	return sec.v.SetString(s, 10)
 }
 
-// IsEqual --
+// IsEqual returns true if and only if two secret keys are the same key (bls keys are unique)
 func (sec *SecretKey) IsEqual(rhs *SecretKey) bool {
 	return sec.v.IsEqual(&rhs.v)
 }
 
-// SetByCSPRNG --
+// SetByCSPRNG sets secret key to a random value
 func (sec *SecretKey) SetByCSPRNG() {
 	sec.v.SetByCSPRNG()
 }
 
-// Add --
+// Add aggregates 2 secret keys
 func (sec *SecretKey) Add(rhs *SecretKey) {
 	FrAdd(&sec.v, &sec.v, &rhs.v)
 }
 
-// GetMasterSecretKey --
+// GetMasterSecretKey
 func (sec *SecretKey) GetMasterSecretKey(k int) (msk []SecretKey) {
 	msk = make([]SecretKey, k)
 	msk[0] = *sec
@@ -167,16 +172,6 @@ func (sec *SecretKey) GetMasterSecretKey(k int) (msk []SecretKey) {
 		msk[i].SetByCSPRNG()
 	}
 	return msk
-}
-
-// GetMasterPublicKey --
-func GetMasterPublicKey(msk []SecretKey) (mpk []PublicKey) {
-	n := len(msk)
-	mpk = make([]PublicKey, n)
-	for i := 0; i < n; i++ {
-		mpk[i] = *msk[i].GetPublicKey()
-	}
-	return mpk
 }
 
 // Set --
@@ -198,9 +193,21 @@ func (sec *SecretKey) GetPop() (sign *Sign) {
 	return sign
 }
 
-// PublicKey --
+// ---------------- Public Key --------------------
+
+// PublicKey
 type PublicKey struct {
 	v G2
+}
+
+// GetMasterPublicKey
+func GetMasterPublicKey(msk []SecretKey) (mpk []PublicKey) {
+	n := len(msk)
+	mpk = make([]PublicKey, n)
+	for i := 0; i < n; i++ {
+		mpk[i] = *msk[i].GetPublicKey()
+	}
+	return mpk
 }
 
 // getPointer --
@@ -323,13 +330,9 @@ func (sec *SecretKey) Sign(message []byte) (sign *Sign) {
 }
 
 // SignHash
-/*
-	sign the hash
-	use the low (bitSize of r) - 1 bit of h
-	return 0 if success else -1
-	NOTE : return false if h is zero or c1 or -c1 value for BN254. see hashTest() in test/bls_test.hpp
-*/
-
+// use the low (bitSize of r) - 1 bit of h
+// return 0 if success else -1
+// NOTE : return false if h is zero or c1 or -c1 value for BN254. see hashTest() in test/bls_test.hpp
 func (sec *SecretKey) SignHash(hash []byte) (sign *Sign) {
 	sign = new(Sign)
 	// #nosec
@@ -376,7 +379,6 @@ func DHKeyExchange(sec *SecretKey, pub *PublicKey) (out PublicKey) {
 //
 // return 1 if valid
 // @note does not check duplication of hVec
-//
 func (sign *Sign) VerifyAggregatedHashes(pubKeys []PublicKey, hashes []byte, hSize uint, n uint) bool {
 
 	if n == 0 || uint(len(pubKeys)) != n || uint(len(hashes)) != n*hSize || hSize == 0 {
