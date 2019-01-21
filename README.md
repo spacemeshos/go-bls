@@ -10,11 +10,9 @@ This is all a temp big hack that should be fully automated. For now...
 ```
 git clone https://github.com/spacemeshos/go-bls
 cd go-bls
-mkdir external
-cd external
-git clone https://github.com/herumi/mcl.git
-git clone https://github.com/herumi/bls.git
-cd mcl
+git submodule init
+git submodule update
+cd external/mcl
 make test
 make test-go
 cd ..
