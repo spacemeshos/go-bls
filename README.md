@@ -29,7 +29,7 @@ go test ./tests/. -v
 ## Running
 ```
 cd examples
-export DYLD_LIBRARY_PATH=[YR-GO-PATH]/src/github.com/spacemeshos/go-bls/external/bls/lib
+export DYLD_LIBRARY_PATH=$GOPATH/src/github.com/spacemeshos/go-bls/external/bls/lib
 go run main.go
 
 ```
