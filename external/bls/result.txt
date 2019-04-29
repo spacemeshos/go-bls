@@ -1,0 +1,6 @@
+ctest:name=bls256_test, module=1, total=151, ok=151, ng=0, exception=0
+ctest:name=bls384_test, module=1, total=285, ok=285, ng=0, exception=0
+ctest:name=bls384_256_test, module=1, total=285, ok=285, ng=0, exception=0
+ctest:name=bls_c256_test, module=2, total=56, ok=56, ng=0, exception=0
+ctest:name=bls_c384_test, module=2, total=173, ok=173, ng=0, exception=0
+ctest:name=bls_c384_256_test, module=2, total=118, ok=118, ng=0, exception=0
