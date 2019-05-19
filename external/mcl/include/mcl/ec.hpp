@@ -20,14 +20,35 @@
 
 namespace mcl {
 
+template<class _Fp> class Fp2T;
+
 namespace ec {
 
 enum Mode {
-	Jacobi,
-	Proj
+	Jacobi = 0,
+	Proj = 1
 };
 
-} // mcl::ecl
+namespace local {
+
+// x is negative <=> x < half(:=(p+1)/2) <=> a = 1
+template<class Fp>
+bool get_a_flag(const Fp& x)
+{
+	return x.isNegative();
+}
+
+// Im(x) is negative <=> Im(x)  < half(:=(p+1)/2) <=> a = 1
+
+template<class Fp>
+bool get_a_flag(const mcl::Fp2T<Fp>& x)
+{
+	return get_a_flag(x.b); // x = a + bi
+}
+
+} // mcl::ec::local
+
+} // mcl::ec
 
 /*
 	elliptic curve
@@ -423,27 +444,41 @@ public:
 		dblNoVerifyInf(R, P);
 	}
 #ifndef MCL_EC_USE_AFFINE
-	static inline void addJacobi(EcT& R, const EcT& P, const EcT& Q)
+	static inline void addJacobi(EcT& R, const EcT& P, const EcT& Q, bool isPzOne, bool isQzOne)
 	{
-		const bool isQzOne = Q.z.isOne();
 		Fp r, U1, S1, H, H3;
-		Fp::sqr(r, P.z);
+		if (isPzOne) {
+			// r = 1;
+		} else {
+			Fp::sqr(r, P.z);
+		}
 		if (isQzOne) {
 			U1 = P.x;
-			Fp::mul(H, Q.x, r);
+			if (isPzOne) {
+				H = Q.x;
+			} else {
+				Fp::mul(H, Q.x, r);
+			}
 			H -= U1;
-			r *= P.z;
 			S1 = P.y;
 		} else {
 			Fp::sqr(S1, Q.z);
 			Fp::mul(U1, P.x, S1);
-			Fp::mul(H, Q.x, r);
+			if (isPzOne) {
+				H = Q.x;
+			} else {
+				Fp::mul(H, Q.x, r);
+			}
 			H -= U1;
-			r *= P.z;
 			S1 *= Q.z;
 			S1 *= P.y;
 		}
-		r *= Q.y;
+		if (isPzOne) {
+			r = Q.y;
+		} else {
+			r *= P.z;
+			r *= Q.y;
+		}
 		r -= S1;
 		if (H.isZero()) {
 			if (r.isZero()) {
@@ -453,11 +488,13 @@ public:
 			}
 			return;
 		}
-		if (isQzOne) {
-			Fp::mul(R.z, P.z, H);
+		if (isPzOne) {
+			R.z = H;
 		} else {
-			Fp::mul(R.z, P.z, Q.z);
-			R.z *= H;
+			Fp::mul(R.z, P.z, H);
+		}
+		if (!isQzOne) {
+			R.z *= Q.z;
 		}
 		Fp::sqr(H3, H); // H^2
 		Fp::sqr(R.y, r); // r^2
@@ -471,9 +508,8 @@ public:
 		H3 *= S1;
 		Fp::sub(R.y, U1, H3);
 	}
-	static inline void addProj(EcT& R, const EcT& P, const EcT& Q)
+	static inline void addProj(EcT& R, const EcT& P, const EcT& Q, bool isPzOne, bool isQzOne)
 	{
-		const bool isQzOne = Q.z.isOne();
 		Fp r, PyQz, v, A, vv;
 		if (isQzOne) {
 			r = P.x;
@@ -482,8 +518,13 @@ public:
 			Fp::mul(r, P.x, Q.z);
 			Fp::mul(PyQz, P.y, Q.z);
 		}
-		Fp::mul(A, Q.y, P.z);
-		Fp::mul(v, Q.x, P.z);
+		if (isPzOne) {
+			A = Q.y;
+			v = Q.x;
+		} else {
+			Fp::mul(A, Q.y, P.z);
+			Fp::mul(v, Q.x, P.z);
+		}
 		v -= r;
 		if (v.isZero()) {
 			if (A == PyQz) {
@@ -501,10 +542,19 @@ public:
 		if (isQzOne) {
 			R.z = P.z;
 		} else {
-			Fp::mul(R.z, P.z, Q.z);
+			if (isPzOne) {
+				R.z = Q.z;
+			} else {
+				Fp::mul(R.z, P.z, Q.z);
+			}
 		}
-		A *= R.z;
-		R.z *= vv;
+		// R.z = 1 if isPzOne && isQzOne
+		if (isPzOne && isQzOne) {
+			R.z = vv;
+		} else {
+			A *= R.z;
+			R.z *= vv;
+		}
 		A -= vv;
 		vv *= PyQz;
 		A -= r;
@@ -515,17 +565,14 @@ public:
 		R.y -= vv;
 	}
 #endif
-	static inline void add(EcT& R, const EcT& P0, const EcT& Q0)
-	{
-		if (P0.isZero()) { R = Q0; return; }
-		if (Q0.isZero()) { R = P0; return; }
-		if (&P0 == &Q0) {
-			dblNoVerifyInf(R, P0);
+	static inline void add(EcT& R, const EcT& P, const EcT& Q) {
+		if (P.isZero()) { R = Q; return; }
+		if (Q.isZero()) { R = P; return; }
+		if (&P == &Q) {
+			dblNoVerifyInf(R, P);
 			return;
 		}
 #ifdef MCL_EC_USE_AFFINE
-		const EcT& P(P0);
-		const EcT& Q(Q0);
 		Fp t;
 		Fp::neg(t, Q.y);
 		if (P.y == t) { R.clear(); return; }
@@ -547,19 +594,14 @@ public:
 		Fp::sub(R.y, s, P.y);
 		R.x = x3;
 #else
-		const EcT *pP = &P0;
-		const EcT *pQ = &Q0;
-		if (pP->z.isOne()) {
-			fp::swap_(pP, pQ);
-		}
-		const EcT& P(*pP);
-		const EcT& Q(*pQ);
+		bool isPzOne = P.z.isOne();
+		bool isQzOne = Q.z.isOne();
 		switch (mode_) {
 		case ec::Jacobi:
-			addJacobi(R, P, Q);
+			addJacobi(R, P, Q, isPzOne, isQzOne);
 			break;
 		case ec::Proj:
-			addProj(R, P, Q);
+			addProj(R, P, Q, isPzOne, isQzOne);
 			break;
 		}
 #endif
@@ -687,28 +729,44 @@ public:
 		EcT P(*this);
 		P.normalize();
 		if (ioMode & (IoSerialize | IoSerializeHexStr)) {
-			/*
-				if (isMSBserialize()) {
-				  // n bytes
-				  x | (y.isOdd ? 0x80 : 0)
-				} else {
-				  // n + 1 bytes
-				  (y.isOdd ? 3 : 2), x
-				}
-			*/
 			const size_t n = Fp::getByteSize();
 			const size_t adj = isMSBserialize() ? 0 : 1;
-			char buf[sizeof(Fp) + 1];
-			if (isZero()) {
-				memset(buf, 0, n + adj);
-			} else {
-				cybozu::MemoryOutputStream mos(buf + adj, n);
-				P.x.save(pb, mos, IoSerialize); if (!*pb) return;
-				if (adj) {
-					buf[0] = P.y.isOdd() ? 3 : 2;
+			uint8_t buf[sizeof(Fp) + 1];
+			if (Fp::BaseFp::isETHserialization()) {
+				const uint8_t c_flag = 0x80;
+				const uint8_t b_flag = 0x40;
+				const uint8_t a_flag = 0x20;
+				if (P.isZero()) {
+					buf[0] = c_flag | b_flag;
+					memset(buf + 1, 0, n - 1);
 				} else {
-					if (P.y.isOdd()) {
-						buf[n - 1] |= 0x80;
+					cybozu::MemoryOutputStream mos(buf, n);
+					P.x.save(pb, mos, IoSerialize); if (!*pb) return;
+					uint8_t cba = c_flag;
+					if (ec::local::get_a_flag(P.y)) cba |= a_flag;
+					buf[0] |= cba;
+				}
+			} else {
+				/*
+					if (isMSBserialize()) {
+					  // n bytes
+					  x | (y.isOdd ? 0x80 : 0)
+					} else {
+					  // n + 1 bytes
+					  (y.isOdd ? 3 : 2), x
+					}
+				*/
+				if (isZero()) {
+					memset(buf, 0, n + adj);
+				} else {
+					cybozu::MemoryOutputStream mos(buf + adj, n);
+					P.x.save(pb, mos, IoSerialize); if (!*pb) return;
+					if (adj) {
+						buf[0] = P.y.isOdd() ? 3 : 2;
+					} else {
+						if (P.y.isOdd()) {
+							buf[n - 1] |= 0x80;
+						}
 					}
 				}
 			}
@@ -757,7 +815,7 @@ public:
 			const size_t n = Fp::getByteSize();
 			const size_t adj = isMSBserialize() ? 0 : 1;
 			const size_t n1 = n + adj;
-			char buf[sizeof(Fp) + 1];
+			uint8_t buf[sizeof(Fp) + 1];
 			size_t readSize;
 			if (ioMode & IoSerializeHexStr) {
 				readSize = mcl::fp::readHexStr(buf, n1, is);
@@ -766,6 +824,38 @@ public:
 			}
 			if (readSize != n1) {
 				*pb = false;
+				return;
+			}
+			if (Fp::BaseFp::isETHserialization()) {
+				const uint8_t c_flag = 0x80;
+				const uint8_t b_flag = 0x40;
+				const uint8_t a_flag = 0x20;
+				*pb = false;
+				if ((buf[0] & c_flag) == 0) { // assume compressed
+					return;
+				}
+				if (buf[0] & b_flag) { // infinity
+					if (buf[0] != (c_flag | b_flag)) return;
+					for (size_t i = 1; i < n - 1; i++) {
+						if (buf[i]) return;
+					}
+					clear();
+					*pb = true;
+					return;
+				}
+				bool a = (buf[0] & a_flag) != 0;
+				buf[0] &= ~(c_flag | b_flag | a_flag);
+				mcl::fp::local::byteSwap(buf, n);
+				x.setArray(pb, buf, n);
+				if (!*pb) return;
+				getWeierstrass(y, x);
+				if (!Fp::squareRoot(y, y)) {
+					*pb = false;
+					return;
+				}
+				if (ec::local::get_a_flag(y) ^ a) {
+					Fp::neg(y, y);
+				}
 				return;
 			}
 			if (fp::isZeroArray(buf, n1)) {
@@ -889,6 +979,10 @@ public:
 	bool operator<=(const EcT& rhs) const { return !operator>(rhs); }
 	static inline void mulArray(EcT& z, const EcT& x, const fp::Unit *y, size_t yn, bool isNegative, bool constTime = false)
 	{
+		if (!constTime && x.isZero()) {
+			z.clear();
+			return;
+		}
 		if (mulArrayGLV && (constTime || yn > 1)) {
 			mulArrayGLV(z, x, y, yn, isNegative, constTime);
 			return;
@@ -983,6 +1077,7 @@ struct EcParam {
 	const char *gy;
 	const char *n;
 	size_t bitSize; // bit length of p
+	int curveType;
 };
 
 } // mcl

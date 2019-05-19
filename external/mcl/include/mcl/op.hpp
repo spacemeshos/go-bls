@@ -10,9 +10,6 @@
 #include <memory.h>
 #include <mcl/array.hpp>
 
-#ifndef MCL_MAX_BIT_SIZE
-	#define MCL_MAX_BIT_SIZE 521
-#endif
 #if defined(__EMSCRIPTEN__) || defined(__wasm__)
 	#define MCL_DONT_USE_XBYAK
 	#define MCL_DONT_USE_OPENSSL
@@ -25,6 +22,8 @@
 #define MCL_MAX_HASH_BIT_SIZE 512
 
 namespace mcl {
+
+static const int version = 0x094; /* 0xABC = A.BC */
 
 /*
 	specifies available string format mode for X::setIoMode()
@@ -59,7 +58,7 @@ namespace mcl {
 	IoArray
 		array of Unit(fixed size = Fp::getByteSize())
 	IoArrayRaw
-		array of Unit(fixed size = Fp::getByteSize()) without Montgomery convresion
+		array of Unit(fixed size = Fp::getByteSize()) without Montgomery conversion
 
 	// for Ec::setIoMode()
 	IoEcAffine(default)
@@ -161,7 +160,8 @@ enum PrimeMode {
 enum MaskMode {
 	NoMask = 0, // throw if greater or equal
 	SmallMask = 1, // 1-bit smaller mask if greater or equal
-	MaskAndMod = 2 // mask and substract if greater or equal
+	MaskAndMod = 2, // mask and substract if greater or equal
+	Mod = 3 // mod p
 };
 
 struct Op {
@@ -174,6 +174,7 @@ struct Op {
 	mpz_class mp;
 	uint32_t pmod4;
 	mcl::SquareRoot sq;
+	mcl::Modp modp;
 	Unit half[maxUnitSize]; // (p + 1) / 2
 	Unit oneRep[maxUnitSize]; // 1(=inv R if Montgomery)
 	/*
@@ -328,12 +329,12 @@ struct Op {
 		fp2_mulNF = 0;
 		fp2_inv = 0;
 		fp2_mul_xiA_ = 0;
+		hash = 0;
 
 		primeMode = PM_GENERIC;
 		isFullBit = false;
 		isMont = false;
 		isFastMod = false;
-		hash = 0;
 	}
 	void fromMont(Unit* y, const Unit *x) const
 	{

@@ -251,7 +251,7 @@ void setOp(Op& op, Mode mode)
 	setOp2<N, Gtag, true, false>(op);
 #ifdef MCL_USE_LLVM
 	if (mode != fp::FP_GMP && mode != fp::FP_GMP_MONT) {
-#if defined(MCL_USE_XBYAK) && CYBOZU_HOST == CYBOZU_HOST_INTEL
+#if MCL_LLVM_BMI2 == 1
 		const bool gmpIsFasterThanLLVM = false;//(N == 8 && MCL_SIZEOF_UNIT == 8);
 		Xbyak::util::Cpu cpu;
 		if (cpu.has(Xbyak::util::Cpu::tBMI2)) {
@@ -318,9 +318,9 @@ static bool initForMont(Op& op, const Unit *p, Mode mode)
 	if (mode != FP_XBYAK) return true;
 #ifdef MCL_USE_XBYAK
 	if (op.fg == 0) op.fg = Op::createFpGenerator();
-	op.fg->init(op);
+	bool useXbyak = op.fg->init(op);
 
-	if (op.isMont && N <= 4) {
+	if (useXbyak && op.isMont && N <= 4) {
 		op.fp_invOp = &invOpForMontC;
 		initInvTbl(op);
 	}
@@ -386,21 +386,31 @@ bool Op::init(const mpz_class& _p, size_t maxBitSize, int _xi_a, Mode mode, size
 	isFullBit = (bitSize % UnitBitSize) == 0;
 
 #if defined(MCL_USE_LLVM) || defined(MCL_USE_XBYAK)
-	if ((mode == FP_AUTO || mode == FP_LLVM || mode == FP_XBYAK)
-		&& mp == mpz_class("0xfffffffffffffffffffffffffffffffeffffffffffffffff")) {
-		primeMode = PM_NIST_P192;
-		isMont = false;
-		isFastMod = true;
+	if (mode == FP_AUTO || mode == FP_LLVM || mode == FP_XBYAK) {
+		const char *pStr = "0xfffffffffffffffffffffffffffffffeffffffffffffffff";
+		bool b;
+		mpz_class p192;
+		gmp::setStr(&b, p192, pStr);
+		if (b && mp == p192) {
+			primeMode = PM_NIST_P192;
+			isMont = false;
+			isFastMod = true;
+		}
 	}
-	if ((mode == FP_AUTO || mode == FP_LLVM || mode == FP_XBYAK)
-		&& mp == mpz_class("0x1ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")) {
-		primeMode = PM_NIST_P521;
-		isMont = false;
-		isFastMod = true;
+	if (mode == FP_AUTO || mode == FP_LLVM || mode == FP_XBYAK) {
+		const char *pStr = "0x1ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+		bool b;
+		mpz_class p521;
+		gmp::setStr(&b, p521, pStr);
+		if (b && mp == p521) {
+			primeMode = PM_NIST_P521;
+			isMont = false;
+			isFastMod = true;
+		}
 	}
 #endif
 #if defined(MCL_USE_VINT) && MCL_SIZEOF_UNIT == 8
-	{
+	if (mode != FP_LLVM && mode != FP_XBYAK) {
 		const char *secp256k1Str = "0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f";
 		bool b;
 		mpz_class secp256k1;
@@ -476,6 +486,7 @@ bool Op::init(const mpz_class& _p, size_t maxBitSize, int _xi_a, Mode mode, size
 		sq.set(&b, mp);
 		if (!b) return false;
 	}
+	modp.init(mp);
 	return fp::initForMont(*this, p, mode);
 }
 
@@ -528,6 +539,27 @@ int detectIoMode(int ioMode, const std::ios_base& ios)
 bool copyAndMask(Unit *y, const void *x, size_t xByteSize, const Op& op, MaskMode maskMode)
 {
 	const size_t fpByteSize = sizeof(Unit) * op.N;
+	if (maskMode == Mod) {
+		if (xByteSize > fpByteSize * 2) return false;
+		mpz_class mx;
+		bool b;
+		gmp::setArray(&b, mx, (const char*)x, xByteSize);
+		if (!b) return false;
+#ifdef MCL_USE_VINT
+		op.modp.modp(mx, mx);
+#else
+		mx %= op.mp;
+#endif
+		const Unit *pmx = gmp::getUnit(mx);
+		size_t i = 0;
+		for (const size_t n = gmp::getUnitSize(mx); i < n; i++) {
+			y[i] = pmx[i];
+		}
+		for (; i < op.N; i++) {
+			y[i] = 0;
+		}
+		return true;
+	}
 	if (xByteSize > fpByteSize) {
 		if (maskMode == NoMask) return false;
 		xByteSize = fpByteSize;

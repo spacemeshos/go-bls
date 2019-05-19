@@ -2,7 +2,9 @@
 /**
 	emulate mpz_class
 */
+#ifndef CYBOZU_DONT_USE_EXCEPTION
 #include <cybozu/exception.hpp>
+#endif
 #include <cybozu/bit_operation.hpp>
 #include <cybozu/xorshift.hpp>
 #include <assert.h>
@@ -19,7 +21,7 @@
 	#define MCL_VINT_FIXED_BUFFER
 #endif
 #ifndef MCL_MAX_BIT_SIZE
-	#define MCL_MAX_BIT_SIZE 384
+	#error "define MCL_MAX_BIT_SZIE"
 #endif
 
 #ifndef MCL_SIZEOF_UNIT
@@ -39,6 +41,13 @@ typedef uint64_t Unit;
 #else
 typedef uint32_t Unit;
 #endif
+
+template<size_t x>
+struct RoundUp {
+	static const size_t UnitBitSize = sizeof(Unit) * 8;
+	static const size_t N = (x + UnitBitSize - 1) / UnitBitSize;
+	static const size_t bit = N * UnitBitSize;
+};
 
 template<class T>
 void dump(const T *x, size_t n, const char *msg = "")
@@ -568,6 +577,7 @@ void divNM(T *q, size_t qn, T *r, const T *x, size_t xn, const T *y, size_t yn)
 	yn = getRealSize(y, yn);
 	if (x == y) {
 		assert(xn == yn);
+	x_is_y:
 		clearN(r, rn);
 		if (q) {
 			q[0] = 1;
@@ -579,6 +589,7 @@ void divNM(T *q, size_t qn, T *r, const T *x, size_t xn, const T *y, size_t yn)
 		/*
 			if y > x then q = 0 and r = x
 		*/
+	q_is_zero:
 		copyN(r, x, xn);
 		clearN(r + xn, rn - xn);
 		if (q) clearN(q, qn);
@@ -598,11 +609,61 @@ void divNM(T *q, size_t qn, T *r, const T *x, size_t xn, const T *y, size_t yn)
 		clearN(r + 1, rn - 1);
 		return;
 	}
+	const size_t yTopBit = cybozu::bsr(y[yn - 1]);
 	assert(yn >= 2);
+	if (xn == yn) {
+		const size_t xTopBit = cybozu::bsr(x[xn - 1]);
+		if (xTopBit < yTopBit) goto q_is_zero;
+		if (yTopBit == xTopBit) {
+			int ret = compareNM(x, xn, y, yn);
+			if (ret == 0) goto x_is_y;
+			if (ret < 0) goto q_is_zero;
+			if (r) {
+				subN(r, x, y, yn);
+			}
+			if (q) {
+				q[0] = 1;
+				clearN(q + 1, qn - 1);
+			}
+			return;
+		}
+		assert(xTopBit > yTopBit);
+		// fast reduction for larger than fullbit-3 size p
+		if (yTopBit >= sizeof(T) * 8 - 4) {
+			T *xx = (T*)CYBOZU_ALLOCA(sizeof(T) * xn);
+			T qv = 0;
+			if (yTopBit == sizeof(T) * 8 - 2) {
+				copyN(xx, x, xn);
+			} else {
+				qv = x[xn - 1] >> (yTopBit + 1);
+				mulu1(xx, y, yn, qv);
+				subN(xx, x, xx, xn);
+				xn = getRealSize(xx, xn);
+			}
+			for (;;) {
+				T ret = subN(xx, xx, y, yn);
+				if (ret) {
+					addN(xx, xx, y, yn);
+					break;
+				}
+				qv++;
+				xn = getRealSize(xx, xn);
+			}
+			if (r) {
+				copyN(r, xx, xn);
+				clearN(r + xn, rn - xn);
+			}
+			if (q) {
+				q[0] = qv;
+				clearN(q + 1, qn - 1);
+			}
+			return;
+		}
+	}
 	/*
 		bitwise left shift x and y to adjust MSB of y[yn - 1] = 1
 	*/
-	const size_t shift = sizeof(T) * 8 - 1 - cybozu::bsr(y[yn - 1]);
+	const size_t shift = sizeof(T) * 8 - 1 - yTopBit;
 	T *xx = (T*)CYBOZU_ALLOCA(sizeof(T) * (xn + 1));
 	const T *yy;
 	if (shift) {
@@ -753,9 +814,16 @@ public:
 	FixedBuffer& operator=(const FixedBuffer& rhs)
 	{
 		size_ = rhs.size_;
+#if defined(__GNUC__) && !defined(__EMSCRIPTEN__) && !defined(__clang__)
+	#pragma GCC diagnostic push
+	#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
 		for (size_t i = 0; i < size_; i++) {
 			v_[i] = rhs.v_[i];
 		}
+#if defined(__GNUC__) && !defined(__EMSCRIPTEN__) && !defined(__clang__)
+	#pragma GCC diagnostic pop
+#endif
 		return *this;
 	}
 	void clear() { size_ = 0; }
@@ -892,7 +960,11 @@ private:
 		size_t zn = fp::max_(xn, yn) + 1;
 		bool b;
 		z.buf_.alloc(&b, zn);
-		assert(b); (void)b;
+		assert(b);
+		if (!b) {
+			z.clear();
+			return;
+		}
 		z.buf_[zn - 1] = vint::addNM(&z.buf_[0], &x[0], xn, &y[0], yn);
 		z.trim(zn);
 	}
@@ -901,7 +973,11 @@ private:
 		size_t zn = xn + 1;
 		bool b;
 		z.buf_.alloc(&b, zn);
-		assert(b); (void)b;
+		assert(b);
+		if (!b) {
+			z.clear();
+			return;
+		}
 		z.buf_[zn - 1] = vint::addu1(&z.buf_[0], &x[0], xn, y);
 		z.trim(zn);
 	}
@@ -910,7 +986,11 @@ private:
 		size_t zn = xn;
 		bool b;
 		z.buf_.alloc(&b, zn);
-		assert(b); (void)b;
+		assert(b);
+		if (!b) {
+			z.clear();
+			return;
+		}
 		Unit c = vint::subu1(&z.buf_[0], &x[0], xn, y);
 		(void)c;
 		assert(!c);
@@ -921,7 +1001,11 @@ private:
 		assert(xn >= yn);
 		bool b;
 		z.buf_.alloc(&b, xn);
-		assert(b); (void)b;
+		assert(b);
+		if (!b) {
+			z.clear();
+			return;
+		}
 		Unit c = vint::subN(&z.buf_[0], &x[0], &y[0], yn);
 		if (xn > yn) {
 			c = vint::subu1(&z.buf_[yn], &x[yn], xn - yn, c);
@@ -996,10 +1080,20 @@ private:
 		bool b;
 		if (q) {
 			q->buf_.alloc(&b, qn);
-			assert(b); (void)b;
+			assert(b);
+			if (!b) {
+				q->clear();
+				r.clear();
+				return;
+			}
 		}
 		r.buf_.alloc(&b, yn);
-		assert(b); (void)b;
+		assert(b);
+		if (!b) {
+			r.clear();
+			if (q) q->clear();
+			return;
+		}
 		vint::divNM(q ? &q->buf_[0] : 0, qn, &r.buf_[0], &x[0], xn, &y[0], yn);
 		if (q) {
 			q->trim(qn);
@@ -1124,8 +1218,15 @@ public:
 		size_t unitSize = (sizeof(S) * size + sizeof(Unit) - 1) / sizeof(Unit);
 		buf_.alloc(pb, unitSize);
 		if (!*pb) return;
-		buf_[unitSize - 1] = 0;
-		memcpy(&buf_[0], x, sizeof(S) * size);
+		char *dst = (char *)&buf_[0];
+		const char *src = (const char *)x;
+		size_t i = 0;
+		for (; i < sizeof(S) * size; i++) {
+			dst[i] = src[i];
+		}
+		for (; i < sizeof(Unit) * unitSize; i++) {
+			dst[i] = 0;
+		}
 		trim(unitSize);
 	}
 	/*
@@ -1215,7 +1316,11 @@ public:
 		assert(q <= size());
 		bool b;
 		buf_.alloc(&b, q + 1);
-		assert(b); (void)b;
+		assert(b);
+		if (!b) {
+			clear();
+			return;
+		}
 		Unit mask = Unit(1) << r;
 		if (v) {
 			buf_[q] |= mask;
@@ -1232,7 +1337,8 @@ public:
 	*/
 	void setStr(bool *pb, const char *str, int base = 0)
 	{
-		const size_t maxN = MCL_MAX_BIT_SIZE / (sizeof(MCL_SIZEOF_UNIT) * 8);
+		// allow twice size of MCL_MAX_BIT_SIZE because of multiplication
+		const size_t maxN = (MCL_MAX_BIT_SIZE * 2 + unitBitSize - 1) / unitBitSize;
 		buf_.alloc(pb, maxN);
 		if (!*pb) return;
 		*pb = false;
@@ -1303,7 +1409,11 @@ public:
 		size_t zn = xn + yn;
 		bool b;
 		z.buf_.alloc(&b, zn);
-		assert(b); (void)b;
+		assert(b);
+		if (!b) {
+			z.clear();
+			return;
+		}
 		vint::mulNM(&z.buf_[0], &x.buf_[0], xn, &y.buf_[0], yn);
 		z.isNeg_ = x.isNeg_ ^ y.isNeg_;
 		z.trim(zn);
@@ -1326,7 +1436,11 @@ public:
 		size_t zn = xn + 1;
 		bool b;
 		z.buf_.alloc(&b, zn);
-		assert(b); (void)b;
+		assert(b);
+		if (!b) {
+			z.clear();
+			return;
+		}
 		z.buf_[zn - 1] = vint::mulu1(&z.buf_[0], &x.buf_[0], xn, y);
 		z.isNeg_ = x.isNeg_;
 		z.trim(zn);
@@ -1375,7 +1489,11 @@ public:
 			q->isNeg_ = xNeg ^ yNeg;
 			bool b;
 			q->buf_.alloc(&b, xn);
-			assert(b); (void)b;
+			assert(b);
+			if (!b) {
+				q->clear();
+				return 0;
+			}
 			r = (int)vint::divu1(&q->buf_[0], &x.buf_[0], xn, absY);
 			q->trim(xn);
 		} else {
@@ -1423,7 +1541,11 @@ public:
 		if (q) {
 			bool b;
 			q->buf_.alloc(&b, xn);
-			assert(b); (void)b;
+			assert(b);
+			if (!b) {
+				q->clear();
+				return 0;
+			}
 		}
 		Unit r = vint::divu1(q ? &q->buf_[0] : 0, &x.buf_[0], xn, y);
 		if (q) {
@@ -1476,7 +1598,11 @@ public:
 		size_t yn = xn + (shiftBit + unitBitSize - 1) / unitBitSize;
 		bool b;
 		y.buf_.alloc(&b, yn);
-		assert(b); (void)b;
+		assert(b);
+		if (!b) {
+			y.clear();
+			return;
+		}
 		vint::shlN(&y.buf_[0], &x.buf_[0], xn, shiftBit);
 		y.isNeg_ = x.isNeg_;
 		y.trim(yn);
@@ -1492,7 +1618,11 @@ public:
 		size_t yn = xn - shiftBit / unitBitSize;
 		bool b;
 		y.buf_.alloc(&b, yn);
-		assert(b); (void)b;
+		assert(b);
+		if (!b) {
+			y.clear();
+			return;
+		}
 		vint::shrN(&y.buf_[0], &x.buf_[0], xn, shiftBit);
 		y.isNeg_ = x.isNeg_;
 		y.trim(yn);
@@ -1526,7 +1656,10 @@ public:
 		assert(xn >= yn);
 		bool b;
 		z.buf_.alloc(&b, xn);
-		assert(b); (void)b;
+		assert(b);
+		if (!b) {
+			z.clear();
+		}
 		for (size_t i = 0; i < yn; i++) {
 			z.buf_[i] = x.buf_[i] | y.buf_[i];
 		}
@@ -1544,7 +1677,11 @@ public:
 		assert(px->size() >= yn);
 		bool b;
 		z.buf_.alloc(&b, yn);
-		assert(b); (void)b;
+		assert(b);
+		if (!b) {
+			z.clear();
+			return;
+		}
 		for (size_t i = 0; i < yn; i++) {
 			z.buf_[i] = x.buf_[i] & y.buf_[i];
 		}
@@ -1917,7 +2054,7 @@ public:
 };
 
 #ifdef MCL_VINT_FIXED_BUFFER
-typedef VintT<vint::FixedBuffer<mcl::vint::Unit, MCL_MAX_BIT_SIZE * 2> > Vint;
+typedef VintT<vint::FixedBuffer<mcl::vint::Unit, vint::RoundUp<MCL_MAX_BIT_SIZE>::bit * 2> > Vint;
 #else
 typedef VintT<vint::Buffer<mcl::vint::Unit> > Vint;
 #endif

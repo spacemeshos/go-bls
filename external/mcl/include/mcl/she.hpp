@@ -170,9 +170,9 @@ public:
 		find range which has same hash of xP in kcv_,
 		and detect it
 	*/
-	int basicLog(G xP, bool *ok = 0) const
+	int basicLog(G xP, bool *pok = 0) const
 	{
-		if (ok) *ok = true;
+		if (pok) *pok = true;
 		if (I::isZero(xP)) return 0;
 		typedef KeyCountVec::const_iterator Iter;
 		KeyCount kc;
@@ -205,8 +205,8 @@ public:
 			prev = abs_c;
 			++p.first;
 		}
-		if (ok) {
-			*ok = false;
+		if (pok) {
+			*pok = false;
 			return 0;
 		}
 		throw cybozu::Exception("HashTable:basicLog:not found");
@@ -215,11 +215,12 @@ public:
 		compute log_P(xP)
 		call basicLog at most 2 * tryNum
 	*/
-	int64_t log(const G& xP) const
+	int64_t log(const G& xP, bool *pok = 0) const
 	{
 		bool ok;
 		int c = basicLog(xP, &ok);
 		if (ok) {
+			if (pok) *pok = true;
 			return c;
 		}
 		G posP = xP, negP = xP;
@@ -231,14 +232,20 @@ public:
 			posCenter += next;
 			c = basicLog(posP, &ok);
 			if (ok) {
+				if (pok) *pok = true;
 				return posCenter + c;
 			}
 			I::add(negP, negP, nextP_);
 			negCenter -= next;
 			c = basicLog(negP, &ok);
 			if (ok) {
+				if (pok) *pok = true;
 				return negCenter + c;
 			}
+		}
+		if (pok) {
+			*pok = false;
+			return 0;
 		}
 		throw cybozu::Exception("HashTable:log:not found");
 	}
@@ -683,7 +690,7 @@ public:
 			throw cybozu::Exception("she:dec:log:not found");
 		}
 #endif
-		int64_t dec(const CipherTextG1& c) const
+		int64_t dec(const CipherTextG1& c, bool *pok = 0) const
 		{
 			if (useDecG1ViaGT_) return decViaGT(c);
 			/*
@@ -694,51 +701,51 @@ public:
 			G1 R;
 			G1::mul(R, c.T_, x_);
 			G1::sub(R, c.S_, R);
-			return PhashTbl_.log(R);
+			return PhashTbl_.log(R, pok);
 		}
-		int64_t dec(const CipherTextG2& c) const
+		int64_t dec(const CipherTextG2& c, bool *pok = 0) const
 		{
 			if (useDecG2ViaGT_) return decViaGT(c);
 			G2 R;
 			G2::mul(R, c.T_, y_);
 			G2::sub(R, c.S_, R);
-			return QhashTbl_.log(R);
+			return QhashTbl_.log(R, pok);
 		}
-		int64_t dec(const CipherTextA& c) const
+		int64_t dec(const CipherTextA& c, bool *pok = 0) const
 		{
-			return dec(c.c1_);
+			return dec(c.c1_, pok);
 		}
-		int64_t dec(const CipherTextGT& c) const
+		int64_t dec(const CipherTextGT& c, bool *pok = 0) const
 		{
 			GT v;
 			getPowOfePQ(v, c);
-			return ePQhashTbl_.log(v);
+			return ePQhashTbl_.log(v, pok);
 //			return log(g, v);
 		}
-		int64_t decViaGT(const CipherTextG1& c) const
+		int64_t decViaGT(const CipherTextG1& c, bool *pok = 0) const
 		{
 			G1 R;
 			G1::mul(R, c.T_, x_);
 			G1::sub(R, c.S_, R);
 			GT v;
 			pairing(v, R, Q_);
-			return ePQhashTbl_.log(v);
+			return ePQhashTbl_.log(v, pok);
 		}
-		int64_t decViaGT(const CipherTextG2& c) const
+		int64_t decViaGT(const CipherTextG2& c, bool *pok = 0) const
 		{
 			G2 R;
 			G2::mul(R, c.T_, y_);
 			G2::sub(R, c.S_, R);
 			GT v;
 			pairing(v, P_, R);
-			return ePQhashTbl_.log(v);
+			return ePQhashTbl_.log(v, pok);
 		}
-		int64_t dec(const CipherText& c) const
+		int64_t dec(const CipherText& c, bool *pok = 0) const
 		{
 			if (c.isMultiplied()) {
-				return dec(c.m_);
+				return dec(c.m_, pok);
 			} else {
-				return dec(c.a_);
+				return dec(c.a_, pok);
 			}
 		}
 		bool isZero(const CipherTextG1& c) const
@@ -1045,7 +1052,7 @@ private:
 		G2 R5, R6;
 		ElGamalEnc(R4, R3, rm, Pmul, xPmul, &rp);
 		ElGamalEnc(R6, R5, rm, Qmul, yQmul, &rs);
-		char buf[sizeof(Fr) * 12];
+		char buf[sizeof(Fp) * 12];
 		cybozu::MemoryOutputStream os(buf, sizeof(buf));
 		S1.save(os);
 		T1.save(os);
@@ -1105,7 +1112,7 @@ private:
 		R5 -= X2;
 		G2::mul(X2, S2, c);
 		R6 -= X2;
-		char buf[sizeof(Fr) * 12];
+		char buf[sizeof(Fp) * 12];
 		cybozu::MemoryOutputStream os(buf, sizeof(buf));
 		S1.save(os);
 		T1.save(os);
@@ -1325,7 +1332,7 @@ public:
 
 			G1 P1, P2;
 			G1::mul(P1, xP_, ra);
-			if (m) {
+			if (m != 0) {
 //				G1::mul(P2, P, m);
 				PhashTbl_.mulByWindowMethod(P2, m);
 				P1 += P2;
@@ -1656,7 +1663,8 @@ public:
 		{
 			mul(z, x.c1_, y.c2_);
 		}
-		static void mul(CipherTextGT& z, const CipherTextGT& x, int64_t y)
+		template<class INT>
+		static void mul(CipherTextGT& z, const CipherTextGT& x, const INT& y)
 		{
 			for (int i = 0; i < 4; i++) {
 				GT::pow(z.g_[i], x.g_[i], y);

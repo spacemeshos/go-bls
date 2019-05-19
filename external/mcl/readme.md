@@ -10,6 +10,7 @@ mcl is a library for pairing-based cryptography.
 The current version supports the optimal Ate pairing over BN curves and BLS12-381 curves.
 
 # News
+* mclBn_setETHserialization(true) (de)serialize acoording to [ETH2.0 serialization of BLS12-381](https://github.com/ethereum/eth2.0-specs/blob/dev/specs/bls_signature.md#point-representations) when BLS12-381 is used.
 * (Break backward compatibility) libmcl_dy.a is renamed to libmcl.a
     * The option SHARE_BASENAME_SUF is removed
 * 2nd argument of `mclBn_init` is changed from `maxUnitSize` to `compiledTimeVar`, which must be `MCLBN_COMPILED_TIME_VAR`.
@@ -301,6 +302,19 @@ The field Fp12 is constructed via the following tower:
 * Fp12 = Fp6[w] / (w^2 - v)
 * GT = { x in Fp12 | x^r = 1 }
 
+## Curve Parameter
+r = |G1| = |G2| = |GT|
+
+curveType   | hexadecimal number|
+------------|-------------------|
+BN254 r     | 2523648240000001ba344d8000000007ff9f800000000010a10000000000000d |
+BN254 p     | 2523648240000001ba344d80000000086121000000000013a700000000000013 |
+BN381 r     | 240026400f3d82b2e42de125b00158405b710818ac000007e0042f008e3e00000000001080046200000000000000000d |
+BN381 p     | 240026400f3d82b2e42de125b00158405b710818ac00000840046200950400000000001380052e000000000000000013 |
+BN462 r     | 240480360120023ffffffffff6ff0cf6b7d9bfca0000000000d812908ee1c201f7fffffffff6ff66fc7bf717f7c0000000002401b007e010800d |
+BN462 r     | 240480360120023ffffffffff6ff0cf6b7d9bfca0000000000d812908f41c8020ffffffffff6ff66fc6ff687f640000000002401b00840138013 |
+BLS12-381 r | 73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001 |
+BLS12-381 r | 1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab |
 
 ## Arithmetic operations
 
@@ -352,6 +366,44 @@ getStr() method gets
 * `2 <x>` ; compressed format for even y
 * `3 <x>` ; compressed format for odd y
 
+## Generator of G1 and G2
+
+If you want to use the same generators of BLS12-381 with [zkcrypto](https://github.com/zkcrypto/pairing/tree/master/src/bls12_381#g2) then,
+
+```
+// G1 P
+P.setStr('1 3685416753713387016781088315183077757961620795782546409894578378688607592378376318836054947676345821548104185464507 1339506544944476473020471379941921221584933875938349620426543736416511423956333506472724655353366534992391756441569')
+
+// G2 Q
+Q.setStr('1 352701069587466618187139116011060144890029952792775240219908644239793785735715026873347600343865175952761926303160 3059144344244213709971259814753781636986470325476647558659373206291635324768958432433509563104347017837885763365758 1985150602287291935568054521177171638300868978215655730859378665066344726373823718423869104263333984641494340347905 927553665492332455747201965776037880757740193453592970025027978793976877002675564980949289727957565575433344219582')
+```
+
+## Serialization format of G1 and G2
+
+pseudo-code to serialize of p
+```
+if bit-length(p) % 8 != 0:
+  size = Fp::getByteSize()
+  if p is zero:
+    return [0] * size
+  else:
+    s = x.serialize()
+    # x in Fp2 is odd <=> x.a is odd
+    if y is odd:
+      s[byte-length(s) - 1] |= 0x80
+    return s
+else:
+  size = Fp::getByteSize() + 1
+  if p is zero:
+    return [0] * size
+  else:
+    s = x.serialize()
+    if y is odd:
+      return 2:s
+    else:
+      return 3:s
+```
+
 ## Verify an element in G2
 `G2::isValid()` checks that the element is in the curve of G2 and the order of it is r for subgroup attack.
 `G2::set()`, `G2::setStr` and `operator<<` also check the order.
@@ -402,6 +454,19 @@ This library contains some part of the followings software licensed by BSD-3-Cla
   SAC 2011, ([preprint](https://eprint.iacr.org/2008/530))
 * [_Skew Frobenius Map and Efficient Scalar Multiplication for Pairing–Based Cryptography_](https://www.researchgate.net/publication/221282560_Skew_Frobenius_Map_and_Efficient_Scalar_Multiplication_for_Pairing-Based_Cryptography),
 Y. Sakemi, Y. Nogami, K. Okeya, Y. Morikawa, CANS 2008.
+
+# History
+
+* 2019/Apr/29 v0.94 mclBn_setETHserialization supports [ETH2.0 serialization of BLS12-381](https://github.com/ethereum/eth2.0-specs/blob/dev/specs/bls_signature.md#point-representations)
+* 2019/Apr/24 v0.93 support ios
+* 2019/Mar/22 v0.92 shortcut for Ec::mul(Px, P, x) if P = 0
+* 2019/Mar/21 python binding of she256 for Linux/Mac/Windows
+* 2019/Mar/14 v0.91 modp supports mcl-wasm
+* 2019/Mar/12 v0.90 fix Vint::setArray(x) for x == this
+* 2019/Mar/07 add mclBnFr_setLittleEndianMod, mclBnFp_setLittleEndianMod
+* 2019/Feb/20 LagrangeInterpolation sets out = yVec[0] if k = 1
+* 2019/Jan/31 add mclBnFp_mapToG1, mclBnFp2_mapToG2
+* 2019/Jan/31 fix crash on x64-CPU without AVX (thanks to mortdeus)
 
 # Author
 

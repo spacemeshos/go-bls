@@ -7,14 +7,16 @@ package bls
 #cgo bn384 LDFLAGS:-lbls384
 #cgo bn384_256 CFLAGS:-DMCLBN_FP_UNIT_SIZE=6 -DMCLBN_FR_UNIT_SIZE=4
 #cgo bn384_256 LDFLAGS:-lbls384_256
-#cgo LDFLAGS:-lbls384
 #cgo LDFLAGS:-lcrypto -lgmp -lgmpxx -lstdc++
 #include "config.h"
+typedef unsigned int (*ReadRandFunc)(void *, void *, unsigned int);
+int wrapReadRandCgo(void *self, void *buf, unsigned int n);
 #include <bls/bls.h>
 */
 import "C"
 import "fmt"
 import "unsafe"
+import "io"
 
 // Init --
 // call this function before calling all the other operations
@@ -70,6 +72,9 @@ func (id *ID) SetDecString(s string) error {
 
 // IsEqual --
 func (id *ID) IsEqual(rhs *ID) bool {
+	if id == nil || rhs == nil {
+		return false
+	}
 	return id.v.IsEqual(&rhs.v)
 }
 
@@ -126,6 +131,9 @@ func (sec *SecretKey) SetDecString(s string) error {
 
 // IsEqual --
 func (sec *SecretKey) IsEqual(rhs *SecretKey) bool {
+	if sec == nil || rhs == nil {
+		return false
+	}
 	return sec.v.IsEqual(&rhs.v)
 }
 
@@ -221,6 +229,9 @@ func (pub *PublicKey) SetHexString(s string) error {
 
 // IsEqual --
 func (pub *PublicKey) IsEqual(rhs *PublicKey) bool {
+	if pub == nil || rhs == nil {
+		return false
+	}
 	return pub.v.IsEqual(&rhs.v)
 }
 
@@ -284,6 +295,9 @@ func (sign *Sign) SetHexString(s string) error {
 
 // IsEqual --
 func (sign *Sign) IsEqual(rhs *Sign) bool {
+	if sign == nil || rhs == nil {
+		return false
+	}
 	return sign.v.IsEqual(&rhs.v)
 }
 
@@ -323,6 +337,9 @@ func (sign *Sign) Verify(pub *PublicKey, m string) bool {
 
 // VerifyPop --
 func (sign *Sign) VerifyPop(pub *PublicKey) bool {
+	if pub.getPointer() == nil {
+		return false
+	}
 	return C.blsVerifyPop(sign.getPointer(), pub.getPointer()) == 1
 }
 
@@ -345,6 +362,9 @@ func HashAndMapToSignature(buf []byte) *Sign {
 
 // VerifyPairing --
 func VerifyPairing(X *Sign, Y *Sign, pub *PublicKey) bool {
+	if X.getPointer() == nil || Y.getPointer() == nil || pub.getPointer() == nil {
+		return false
+	}
 	return C.blsVerifyPairing(X.getPointer(), Y.getPointer(), pub.getPointer()) == 1
 }
 
@@ -362,6 +382,9 @@ func (sec *SecretKey) SignHash(hash []byte) (sign *Sign) {
 
 // VerifyHash --
 func (sign *Sign) VerifyHash(pub *PublicKey, hash []byte) bool {
+	if pub.getPointer() == nil {
+		return false
+	}
 	// #nosec
 	return C.blsVerifyHash(sign.getPointer(), pub.getPointer(), unsafe.Pointer(&hash[0]), C.size_t(len(hash))) == 1
 }
@@ -382,5 +405,39 @@ func (sign *Sign) VerifyAggregateHashes(pubVec []PublicKey, hash [][]byte) bool 
 		hn := len(hash[i])
 		copy(h[i*hashByte:(i+1)*hashByte], hash[i][0:Min(hn, hashByte)])
 	}
+	if pubVec[0].getPointer() == nil {
+		return false
+	}
 	return C.blsVerifyAggregatedHashes(sign.getPointer(), pubVec[0].getPointer(), unsafe.Pointer(&h[0]), C.size_t(hashByte), C.size_t(n)) == 1
+}
+
+///
+
+var s_randReader io.Reader
+
+func createSlice(buf *C.char, n C.uint) []byte {
+	size := int(n)
+	return (*[1 << 30]byte)(unsafe.Pointer(buf))[:size:size]
+}
+
+// this function can't be put in callback.go
+//export wrapReadRandGo
+func wrapReadRandGo(buf *C.char, n C.uint) C.uint {
+	slice := createSlice(buf, n)
+	ret, err := s_randReader.Read(slice)
+	if ret == int(n) && err == nil {
+		return n
+	}
+	return 0
+}
+
+// SetRandFunc --
+func SetRandFunc(randReader io.Reader) {
+	s_randReader = randReader
+	if randReader != nil {
+		C.blsSetRandFunc(nil, C.ReadRandFunc(unsafe.Pointer(C.wrapReadRandCgo)))
+	} else {
+		// use default random generator
+		C.blsSetRandFunc(nil, C.ReadRandFunc(unsafe.Pointer(nil)))
+	}
 }

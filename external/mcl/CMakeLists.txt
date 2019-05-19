@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 2.6)
+cmake_minimum_required (VERSION 3.0)
 project(mcl CXX ASM)
 set(SRCS src/fp.cpp)
 
@@ -12,10 +12,58 @@ option(
 	"download cybozulib_ext"
 	OFF
 )
+option(
+	USE_OPENSSL
+	"use openssl"
+	ON
+)
+option(
+	USE_GMP
+	"use gmp"
+	ON
+)
+option(
+	USE_ASM
+	"use asm"
+	ON
+)
+option(
+	USE_XBYAK
+	"use xbyak"
+	ON
+)
+option(
+	USE_LLVM
+	"use base64.ll with -DCMAKE_CXX_COMPILER=clang++"
+	OFF
+)
+option(
+	ONLY_LIB
+	"only lib"
+	OFF
+)
 
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+if(USE_LLVM)
+	add_executable(gen src/gen.cpp)
+	add_custom_target(base64.ll
+		DEPENDS gen
+		SOURCES base64.ll
+	)
+	add_custom_command(OUTPUT base64.ll
+		COMMAND gen > base64.ll
+	)
+	add_custom_target(base64.o
+		DEPENDS base64.ll
+		SOURCES base64.o
+	)
+	add_custom_command(OUTPUT base64.o
+		COMMAND ${CMAKE_CXX_COMPILER} -c -o base64.o base64.ll -O3 -fPIC
+	)
+endif()
 
 if(MSVC)
 	set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS} /MT /W4 /Oy /Ox /EHsc /GS- /Zi /DNDEBUG /DNOMINMAX")
@@ -32,20 +80,43 @@ else()
 		add_definitions(-DMCL_MAX_BIT_SIZE=${MCL_MAX_BIT_SIZE})
 	endif()
 
-	if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64")
-		add_definitions(-DMCL_USE_LLVM=1)
-		set(SRCS ${SRCS} src/asm/aarch64.s)
-		set(CPU arch64)
-	elseif(APPLE)
-		add_definitions(-DMCL_USE_LLVM=1)
-		set(SRCS ${SRCS} src/asm/x86-64mac.s src/asm/x86-64mac.bmi2.s)
-		set(CPU x86-64)
-	elseif(UNIX)
-		add_definitions(-DMCL_USE_LLVM=1)
-		set(SRCS ${SRCS} src/asm/x86-64.s src/asm/x86-64.bmi2.s)
-		set(CPU x86-64)
+	if(USE_LLVM)
+		add_definitions(-DMCL_USE_LLVM=1 -DMCL_LLVM_BMI2=0)
+	elseif(USE_ASM)
+		if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64")
+			add_definitions(-DMCL_USE_LLVM=1)
+			set(SRCS ${SRCS} src/asm/aarch64.s)
+			set(CPU arch64)
+		elseif(${CMAKE_SYSTEM_PROCESSOR} MATCHES "^arm")
+			add_definitions(-DMCL_USE_LLVM=1)
+			set(SRCS ${SRCS} src/asm/arm.s)
+			set(CPU arm)
+		elseif(APPLE)
+			add_definitions(-DMCL_USE_LLVM=1)
+			set(SRCS ${SRCS} src/asm/x86-64mac.s src/asm/x86-64mac.bmi2.s)
+			set(CPU x86-64)
+		elseif(UNIX)
+			add_definitions(-DMCL_USE_LLVM=1)
+			set(SRCS ${SRCS} src/asm/x86-64.s src/asm/x86-64.bmi2.s)
+			set(CPU x86-64)
+		endif()
 	endif()
-	set(LIBS mcl gmp gmpxx crypto)
+	if(USE_GMP)
+		set(EXT_LIBS ${EXT_LIBS} gmp gmpxx)
+	endif()
+	if(USE_OPENSSL)
+		set(EXT_LIBS ${EXT_LIBS} crypto)
+	endif()
+endif()
+
+if(NOT USE_GMP)
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DMCL_USE_VINT -DMCL_VINT_FIXED_BUFFER")
+endif()
+if(NOT USE_OPENSSL)
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DMCL_DONT_USE_OPENSSL")
+endif()
+if(NOT USE_XBYAK)
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DMCL_DONT_USE_XBYAK")
 endif()
 
 if(DOWNLOAD_SOURCE)
@@ -84,31 +155,55 @@ include_directories(
 	${mcl_SOURCE_DIR}/include
 )
 
-add_library(mcl STATIC ${SRCS})
-add_library(mcl_dy SHARED ${SRCS})
-target_link_libraries(mcl_dy ${LIBS})
-set_target_properties(mcl_dy PROPERTIES OUTPUT_NAME mcl VERSION 1.0.0 SOVERSION 1)
+if(USE_LLVM)
+	add_library(mcl SHARED ${SRCS} base64.o)
+	add_library(mcl_st STATIC ${SRCS} base64.o)
+	add_dependencies(mcl base64.o)
+	add_dependencies(mcl_st base64.o)
+else()
+	add_library(mcl SHARED ${SRCS})
+	add_library(mcl_st STATIC ${SRCS})
+endif()
+target_link_libraries(mcl ${EXT_LIBS})
+target_link_libraries(mcl_st ${EXT_LIBS})
+set_target_properties(mcl_st PROPERTIES OUTPUT_NAME mcl)
+#set_target_properties(mcl_st PROPERTIES PREFIX "lib")
+#set_target_properties(mcl PROPERTIES OUTPUT_NAME mcl VERSION 1.0.0 SOVERSION 1)
 # For semantics of ABI compatibility including when you must bump SOVERSION, see:
 # https://community.kde.org/Policies/Binary_Compatibility_Issues_With_C%2B%2B#The_Do.27s_and_Don.27ts
+
+set(LIBS mcl ${EXT_LIBS})
+foreach(bit IN ITEMS 256 384 384_256 512)
+	add_library(mclbn${bit} SHARED src/bn_c${bit}.cpp)
+	target_link_libraries(mclbn${bit} ${LIBS})
+	add_executable(bn_c${bit}_test test/bn_c${bit}_test.cpp)
+	target_link_libraries(bn_c${bit}_test mclbn${bit})
+endforeach()
 
 file(GLOB MCL_HEADERS include/mcl/*.hpp include/mcl/bn.h include/mcl/curve_type.h)
 file(GLOB CYBOZULIB_HEADERS include/cybozu/*.hpp)
 
 install(TARGETS mcl DESTINATION lib)
-install(TARGETS mcl_dy DESTINATION lib)
+install(TARGETS mcl_st DESTINATION lib)
+install(TARGETS mclbn256 DESTINATION lib)
+install(TARGETS mclbn384 DESTINATION lib)
+install(TARGETS mclbn384_256 DESTINATION lib)
+install(TARGETS mclbn512 DESTINATION lib)
 install(FILES ${MCL_HEADERS} DESTINATION include/mcl)
 install(FILES include/mcl/impl/bn_c_impl.hpp DESTINATION include/mcl/impl)
 install(FILES ${CYBOZULIB_HEADERS} DESTINATION include/cybozu)
 
-set(TEST_BASE fp_test ec_test fp_util_test window_method_test elgamal_test fp_tower_test gmp_test bn_test glv_test)
-#set(TEST_BASE bn_test)
-foreach(base IN ITEMS ${TEST_BASE})
-	add_executable(
-		${base}
-		test/${base}.cpp
-	)
-	target_link_libraries(
-		${base}
-		${LIBS}
-	)
-endforeach()
+if(NOT ONLY_LIB)
+	set(TEST_BASE fp_test ec_test fp_util_test window_method_test elgamal_test fp_tower_test gmp_test bn_test glv_test)
+	#set(TEST_BASE bn_test)
+	foreach(base IN ITEMS ${TEST_BASE})
+		add_executable(
+			${base}
+			test/${base}.cpp
+		)
+		target_link_libraries(
+			${base}
+			${LIBS}
+		)
+	endforeach()
+endif()

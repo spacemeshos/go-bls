@@ -124,26 +124,26 @@ struct ElgamalT {
 		http://dx.doi.org/10.1587/transfun.E96.A.1156
 	*/
 	struct Zkp {
-		Zn c0, c1, s0, s1;
+		Zn c[2], s[2];
 		template<class InputStream>
 		void load(InputStream& is, int ioMode = IoSerialize)
 		{
-			c0.load(is, ioMode);
-			c1.load(is, ioMode);
-			s0.load(is, ioMode);
-			s1.load(is, ioMode);
+			c[0].load(is, ioMode);
+			c[1].load(is, ioMode);
+			s[0].load(is, ioMode);
+			s[1].load(is, ioMode);
 		}
 		template<class OutputStream>
 		void save(OutputStream& os, int ioMode = IoSerialize) const
 		{
 			const char sep = *fp::getIoSeparator(ioMode);
-			c0.save(os, ioMode);
+			c[0].save(os, ioMode);
 			if (sep) cybozu::writeChar(os, sep);
-			c1.save(os, ioMode);
+			c[1].save(os, ioMode);
 			if (sep) cybozu::writeChar(os, sep);
-			s0.save(os, ioMode);
+			s[0].save(os, ioMode);
 			if (sep) cybozu::writeChar(os, sep);
-			s1.save(os, ioMode);
+			s[1].save(os, ioMode);
 		}
 		void getStr(std::string& str, int ioMode = 0) const
 		{
@@ -179,11 +179,9 @@ struct ElgamalT {
 
 	class PublicKey {
 		size_t bitSize;
-		Ec f;
 		Ec g;
 		Ec h;
 		bool enableWindowMethod_;
-		fp::WindowMethod<Ec> wm_f;
 		fp::WindowMethod<Ec> wm_g;
 		fp::WindowMethod<Ec> wm_h;
 		template<class N>
@@ -196,8 +194,6 @@ struct ElgamalT {
 			}
 		}
 		template<class N>
-		void mulF(Ec& z, const N& n) const { mulDispatch(z, f, n, wm_f); }
-		template<class N>
 		void mulG(Ec& z, const N& n) const { mulDispatch(z, g, n, wm_g); }
 		template<class N>
 		void mulH(Ec& z, const N& n) const { mulDispatch(z, h, n, wm_h); }
@@ -209,16 +205,14 @@ struct ElgamalT {
 		}
 		void enableWindowMethod(size_t winSize = 10)
 		{
-			wm_f.init(f, bitSize, winSize);
 			wm_g.init(g, bitSize, winSize);
 			wm_h.init(h, bitSize, winSize);
 			enableWindowMethod_ = true;
 		}
-		const Ec& getF() const { return f; }
-		void init(size_t bitSize, const Ec& f, const Ec& g, const Ec& h)
+		const Ec& getG() const { return g; }
+		void init(size_t bitSize, const Ec& g, const Ec& h)
 		{
 			this->bitSize = bitSize;
-			this->f = f;
 			this->g = g;
 			this->h = h;
 			enableWindowMethod_ = false;
@@ -227,7 +221,7 @@ struct ElgamalT {
 		/*
 			encode message
 			input : m
-			output : c = (c1, c2) = (g^u, h^u f^m)
+			output : c = (c1, c2) = (g^u, h^u g^m)
 		*/
 		void enc(CipherText& c, const Zn& m, fp::RandGen rg = fp::RandGen()) const
 		{
@@ -236,7 +230,7 @@ struct ElgamalT {
 			mulG(c.c1, u);
 			mulH(c.c2, u);
 			Ec t;
-			mulF(t, m);
+			mulG(t, m);
 			Ec::add(c.c2, c.c2, t);
 		}
 		/*
@@ -253,77 +247,58 @@ struct ElgamalT {
 			u.setRand(rg);
 			mulG(c.c1, u);
 			mulH(c.c2, u);
+			Ec t1, t2;
+			Ec R1[2], R2[2];
+			zkp.c[1-m].setRand(rg);
+			zkp.s[1-m].setRand(rg);
+			mulG(t1, zkp.s[1-m]);
+			Ec::mul(t2, c.c1, zkp.c[1-m]);
+			Ec::sub(R1[1-m], t1, t2);
+			mulH(t1, zkp.s[1-m]);
 			if (m) {
-				Ec::add(c.c2, c.c2, f);
-				Zn r1;
-				r1.setRand(rg);
-				zkp.c0.setRand(rg);
-				zkp.s0.setRand(rg);
-				Ec R01, R02, R11, R12;
-				Ec t1, t2;
-				mulG(t1, zkp.s0);
-				Ec::mul(t2, c.c1, zkp.c0);
-				Ec::sub(R01, t1, t2);
-				mulH(t1, zkp.s0);
-				Ec::mul(t2, c.c2, zkp.c0);
-				Ec::sub(R02, t1, t2);
-				mulG(R11, r1);
-				mulH(R12, r1);
-				std::ostringstream os;
-				os << R01 << R02 << R11 << R12 << c.c1 << c.c2 << f << g << h;
-				Zn cc;
-				cc.setHashOf(os.str());
-				zkp.c1 = cc - zkp.c0;
-				zkp.s1 = r1 + zkp.c1 * u;
+				Ec::add(c.c2, c.c2, g);
+				Ec::mul(t2, c.c2, zkp.c[0]);
 			} else {
-				Zn r0;
-				r0.setRand(rg);
-				zkp.c1.setRand(rg);
-				zkp.s1.setRand(rg);
-				Ec R01, R02, R11, R12;
-				mulG(R01, r0);
-				mulH(R02, r0);
-				Ec t1, t2;
-				mulG(t1, zkp.s1);
-				Ec::mul(t2, c.c1, zkp.c1);
-				Ec::sub(R11, t1, t2);
-				mulH(t1, zkp.s1);
-				Ec::sub(t2, c.c2, f);
-				Ec::mul(t2, t2, zkp.c1);
-				Ec::sub(R12, t1, t2);
-				std::ostringstream os;
-				os << R01 << R02 << R11 << R12 << c.c1 << c.c2 << f << g << h;
-				Zn cc;
-				cc.setHashOf(os.str());
-				zkp.c0 = cc - zkp.c1;
-				zkp.s0 = r0 + zkp.c0 * u;
+				Ec::sub(t2, c.c2, g);
+				Ec::mul(t2, t2, zkp.c[1]);
 			}
+			Ec::sub(R2[1-m], t1, t2);
+			Zn r;
+			r.setRand(rg);
+			mulG(R1[m], r);
+			mulH(R2[m], r);
+			std::ostringstream os;
+			os << R1[0] << R2[0] << R1[1] << R2[1] << c.c1 << c.c2 << g << h;
+			Zn cc;
+			cc.setHashOf(os.str());
+			zkp.c[m] = cc - zkp.c[1-m];
+			zkp.s[m] = r + zkp.c[m] * u;
 		}
 		/*
 			verify cipher text with ZKP
 		*/
 		bool verify(const CipherText& c, const Zkp& zkp) const
 		{
-			Ec R01, R02, R11, R12;
+			Ec R1[2], R2[2];
 			Ec t1, t2;
-			mulG(t1, zkp.s0);
-			Ec::mul(t2, c.c1, zkp.c0);
-			Ec::sub(R01, t1, t2);
-			mulH(t1, zkp.s0);
-			Ec::mul(t2, c.c2, zkp.c0);
-			Ec::sub(R02, t1, t2);
-			mulG(t1, zkp.s1);
-			Ec::mul(t2, c.c1, zkp.c1);
-			Ec::sub(R11, t1, t2);
-			mulH(t1, zkp.s1);
-			Ec::sub(t2, c.c2, f);
-			Ec::mul(t2, t2, zkp.c1);
-			Ec::sub(R12, t1, t2);
+			mulG(t1, zkp.s[0]);
+			Ec::mul(t2, c.c1, zkp.c[0]);
+			Ec::sub(R1[0], t1, t2);
+			mulH(t1, zkp.s[0]);
+			Ec::mul(t2, c.c2, zkp.c[0]);
+			Ec::sub(R2[0], t1, t2);
+			mulG(t1, zkp.s[1]);
+			Ec::mul(t2, c.c1, zkp.c[1]);
+			Ec::sub(R1[1], t1, t2);
+			mulH(t1, zkp.s[1]);
+			Ec::sub(t2, c.c2, g);
+			Ec::mul(t2, t2, zkp.c[1]);
+			Ec::sub(R2[1], t1, t2);
 			std::ostringstream os;
-			os << R01 << R02 << R11 << R12 << c.c1 << c.c2 << f << g << h;
+			os << R1[0] << R2[0] << R1[1] << R2[1] << c.c1 << c.c2 << g << h;
 			Zn cc;
 			cc.setHashOf(os.str());
-			return cc == zkp.c0 + zkp.c1;
+			return cc == zkp.c[0] + zkp.c[1];
 		}
 		/*
 			rerandomize encoded message
@@ -343,13 +318,13 @@ struct ElgamalT {
 		/*
 			add encoded message with plain message
 			input : c = Enc(m1) = (c1, c2), m2
-			ouput : c = Enc(m1 + m2) = (c1, c2 f^m2)
+			ouput : c = Enc(m1 + m2) = (c1, c2 g^m2)
 		*/
 		template<class N>
 		void add(CipherText& c, const N& m) const
 		{
 			Ec fm;
-			mulF(fm, m);
+			mulG(fm, m);
 			Ec::add(c.c2, c.c2, fm);
 		}
 		template<class InputStream>
@@ -358,10 +333,9 @@ struct ElgamalT {
 			std::string s;
 			mcl::fp::local::loadWord(s, is);
 			bitSize = cybozu::atoi(s);
-			f.load(is, ioMode);
 			g.load(is, ioMode);
 			h.load(is, ioMode);
-			init(bitSize, f, g, h);
+			init(bitSize, g, h);
 		}
 		template<class OutputStream>
 		void save(OutputStream& os, int ioMode = IoSerialize) const
@@ -371,7 +345,6 @@ struct ElgamalT {
 			cybozu::writeChar(os, ' ');
 
 			const char sep = *fp::getIoSeparator(ioMode);
-			f.save(os, ioMode);
 			if (sep) cybozu::writeChar(os, sep);
 			g.save(os, ioMode);
 			if (sep) cybozu::writeChar(os, sep);
@@ -410,7 +383,7 @@ struct ElgamalT {
 		void fromStr(const std::string& str) { setStr(str); }
 	};
 	/*
-		create table f^i for i in [rangeMin, rangeMax]
+		create table g^i for i in [rangeMin, rangeMax]
 	*/
 	struct PowerCache {
 #if (CYBOZU_CPP_VERSION > CYBOZU_CPP_VERSION_CP03)
@@ -419,18 +392,18 @@ struct ElgamalT {
 		typedef std::map<Ec, int> Cache;
 #endif
 		Cache cache;
-		void init(const Ec& f, int rangeMin, int rangeMax)
+		void init(const Ec& g, int rangeMin, int rangeMax)
 		{
 			if (rangeMin > rangeMax) throw cybozu::Exception("mcl:ElgamalT:PowerCache:bad range") << rangeMin << rangeMax;
 			Ec x;
 			x.clear();
 			cache[x] = 0;
 			for (int i = 1; i <= rangeMax; i++) {
-				Ec::add(x, x, f);
+				Ec::add(x, x, g);
 				cache[x] = i;
 			}
 			Ec nf;
-			Ec::neg(nf, f);
+			Ec::neg(nf, g);
 			x.clear();
 			for (int i = -1; i >= rangeMin; i--) {
 				Ec::add(x, x, nf);
@@ -438,17 +411,17 @@ struct ElgamalT {
 			}
 		}
 		/*
-			return m such that f^m = g
+			return m such that g^m = y
 		*/
-		int getExponent(const Ec& g, bool *b = 0) const
+		int getExponent(const Ec& y, bool *b = 0) const
 		{
-			typename Cache::const_iterator i = cache.find(g);
+			typename Cache::const_iterator i = cache.find(y);
 			if (i == cache.end()) {
 				if (b) {
 					*b = false;
 					return 0;
 				}
-				throw cybozu::Exception("Elgamal:PowerCache:getExponent:not found") << g;
+				throw cybozu::Exception("Elgamal:PowerCache:getExponent:not found") << y;
 			}
 			if (b) *b = true;
 			return i->second;
@@ -469,20 +442,17 @@ struct ElgamalT {
 	public:
 		/*
 			init
-			input : f
-			output : (g, h, z)
-			Ec = <f>
-			g in Ec
+			input : g
+			output : (h, z)
+			Ec = <g>
 			h = g^z
 		*/
-		void init(const Ec& f, size_t bitSize, fp::RandGen rg = fp::RandGen())
+		void init(const Ec& g, size_t bitSize, fp::RandGen rg = fp::RandGen())
 		{
-			Ec g, h;
-			z.setRand(rg);
-			Ec::mul(g, f, z);
+			Ec h;
 			z.setRand(rg);
 			Ec::mul(h, g, z);
-			pub.init(bitSize, f, g, h);
+			pub.init(bitSize, g, h);
 		}
 		const PublicKey& getPublicKey() const { return pub; }
 		/*
@@ -490,12 +460,12 @@ struct ElgamalT {
 			input : c = (c1, c2)
 			output : m
 			M = c2 / c1^z
-			find m such that M = f^m and |m| < limit
+			find m such that M = g^m and |m| < limit
 			@memo 7sec@core i3 for m = 1e6
 		*/
 		void dec(Zn& m, const CipherText& c, int limit = 100000) const
 		{
-			const Ec& f = pub.getF();
+			const Ec& g = pub.getG();
 			Ec c1z;
 			Ec::mul(c1z, c.c1, z);
 			if (c1z == c.c2) {
@@ -505,12 +475,12 @@ struct ElgamalT {
 			Ec t1(c1z);
 			Ec t2(c.c2);
 			for (int i = 1; i < limit; i++) {
-				Ec::add(t1, t1, f);
+				Ec::add(t1, t1, g);
 				if (t1 == c.c2) {
 					m = i;
 					return;
 				}
-				Ec::add(t2, t2, f);
+				Ec::add(t2, t2, g);
 				if (t2 == c1z) {
 					m = -i;
 					return;
@@ -519,20 +489,20 @@ struct ElgamalT {
 			throw cybozu::Exception("elgamal:PrivateKey:dec:overflow");
 		}
 		/*
-			powfm = c2 / c1^z = f^m
+			powgm = c2 / c1^z = g^m
 		*/
-		void getPowerf(Ec& powfm, const CipherText& c) const
+		void getPowerg(Ec& powgm, const CipherText& c) const
 		{
 			Ec c1z;
 			Ec::mul(c1z, c.c1, z);
-			Ec::sub(powfm, c.c2, c1z);
+			Ec::sub(powgm, c.c2, c1z);
 		}
 		/*
 			set range of message to decode quickly
 		*/
 		void setCache(int rangeMin, int rangeMax)
 		{
-			cache.init(pub.getF(), rangeMin, rangeMax);
+			cache.init(pub.getG(), rangeMin, rangeMax);
 		}
 		/*
 			clear cache
@@ -550,9 +520,9 @@ struct ElgamalT {
 		*/
 		int dec(const CipherText& c, bool *b = 0) const
 		{
-			Ec powfm;
-			getPowerf(powfm, c);
-			return cache.getExponent(powfm, b);
+			Ec powgm;
+			getPowerg(powgm, c);
+			return cache.getExponent(powgm, b);
 		}
 		/*
 			check whether c is encrypted zero message
